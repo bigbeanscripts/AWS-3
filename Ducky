@@ -1,4 +1,3 @@
-
 local Library = loadstring(game:HttpGetAsync("https://github.com/ActualMasterOogway/Fluent-Renewed/releases/latest/download/Fluent.luau"))()
 local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/SaveManager.luau"))()
 local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/InterfaceManager.luau"))()
@@ -1573,6 +1572,30 @@ OrcVaultToggle:OnChanged(function(value)
         end)
     end
 end)
+
+
+-- Orc Vault Toggle
+local MatrixChestToggle = OpenSection:AddToggle("MatrixChest", {
+    Title = "Auto Open Matrix Chest",
+    Default = false
+})
+
+MatrixChestToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while MatrixChestToggle.Value do
+                if not MatrixChestToggle.Value then break end
+                
+                local args = {
+                    [1] = "Matrix"
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
+                wait(0.5)
+            end
+        end)
+    end
+end)
+
 
 local TowerSection = Tabs.Main:AddSection("Towers")
 
