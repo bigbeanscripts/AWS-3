@@ -769,7 +769,6 @@ for _, zone in ipairs(zones) do
 end
 
 
-
 -- Services
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -782,24 +781,35 @@ local player = Players.LocalPlayer
 local function getAllItems()
     local LimitedMerchant = require(ReplicatedStorage.Data.LimitedMerchant)
     local allItems = {}
-
+    local slotItemMap = {} -- Track items by slot and title to avoid duplicates
+    
     for merchantName, merchantData in pairs(LimitedMerchant) do
         if merchantData.Items then
             for slotIndex, itemList in pairs(merchantData.Items) do
                 for itemIndex, item in ipairs(itemList) do
-                    local itemName = string.format("%s - %s (%.0f %s)",
-                        item.Title or "Unknown",
-                        merchantName,
-                        item.Price or 0,
-                        typeof(item.Currency) == "string" and item.Currency or (typeof(item.Currency) == "table" and item.Currency.Item or "Unknown Currency")
-                    )
-                    table.insert(allItems, {
-                        name = itemName,
-                        merchant = merchantName,
-                        slot = tonumber(slotIndex),
-                        index = itemIndex,
-                        raw = item
-                    })
+                    local title = item.Title or "Unknown"
+                    local key = merchantName .. ":" .. slotIndex .. ":" .. title
+                    
+                    -- Only add if this exact item in this slot hasn't been added yet
+                    if not slotItemMap[key] then
+                        local itemName = string.format("%s - %s (Slot %s) (%.0f %s)",
+                            title,
+                            merchantName,
+                            slotIndex,
+                            item.Price or 0,
+                            typeof(item.Currency) == "string" and item.Currency or (typeof(item.Currency) == "table" and item.Currency.Item or "Unknown Currency")
+                        )
+                        
+                        table.insert(allItems, {
+                            name = itemName,
+                            merchant = merchantName,
+                            slot = tonumber(slotIndex),
+                            index = itemIndex,
+                            raw = item
+                        })
+                        
+                        slotItemMap[key] = true
+                    end
                 end
             end
         end
@@ -904,21 +914,18 @@ AutoBuyToggle:OnChanged(function(enabled)
         task.spawn(function()
             while AutoBuyToggle.Value do
                 local liveData = getLiveStockData()
-
+                
                 for itemName, isSelected in pairs(selectedMerchantItems) do
                     if isSelected then
                         local info = allItemDataMap[itemName]
                         if info then
-                            local liveInfo = liveData[info.merchant .. ":" .. tostring(info.slot)]
-
+                            local merchantSlotKey = info.merchant .. ":" .. tostring(info.slot)
+                            local liveInfo = liveData[merchantSlotKey]
+                            
                             if liveInfo and liveInfo.index == info.index and liveInfo.stock and liveInfo.stock > 0 then
                                 local success, err = pcall(function()
                                     ReplicatedStorage.Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(info.merchant, info.slot)
                                 end)
-
-                                if not success then
-                                    -- silently ignore failure
-                                end
                             end
                         end
                     end
@@ -929,7 +936,6 @@ AutoBuyToggle:OnChanged(function(enabled)
         end)
     end
 end)
-
 
 
 -- Helper to recursively find a nested table by name
@@ -1585,11 +1591,10 @@ MatrixChestToggle:OnChanged(function(value)
         spawn(function()
             while MatrixChestToggle.Value do
                 if not MatrixChestToggle.Value then break end
-                
                 local args = {
                     [1] = "Matrix"
                 }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ItemCrateService.RF.Spin:InvokeServer("Matrix")
                 wait(0.5)
             end
         end)
