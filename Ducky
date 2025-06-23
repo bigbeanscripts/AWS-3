@@ -69,12 +69,12 @@ local Tabs = {
 
 
 -- Create SuperRB Section
-local EventSection = Tabs.Event:AddSection("Rewind Event")
+local EventSection = Tabs.Event:AddSection("Summer Event")
 
 -- Add Load Script Button
 EventSection:AddButton({
     Title = "Load Event Script",
-    Description = "Loads my Duck/Rewind Event script",
+    Description = "Loads my Summer Event script",
     Callback = function()
         loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/Prison-Event/refs/heads/main/event"))()
     end
