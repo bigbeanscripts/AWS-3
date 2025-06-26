@@ -1843,27 +1843,36 @@ AutoClickToggle:OnChanged(function(value)
     if value then
         spawn(function()
             while AutoClickToggle.Value do
-                -- Get reference to CraftAll button
-                local craftAllButton = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.ExtraTools.Pets.BottomBar.CraftAll
-                
-                -- Simulate click if button exists
+                local player = game:GetService("Players").LocalPlayer
+
+                -- Fire CraftAll button
+                local craftAllButton = player.PlayerGui.GameUI.Menus.Inventory.ExtraTools.Pets.BottomBar.CraftAll
                 if craftAllButton then
-                    -- Fire click event
                     firesignal(craftAllButton.MouseButton1Click)
                 end
-                
-                -- Wait with break check
+
+                -- Wait 1 second
+                wait(1)
+
+                -- Fire Confirmation Yes button using Activated event
+                local confirmButton = player.PlayerGui.GameUI.Menus.ConfirmationMenu.Btns.Yes.Button
+                if confirmButton then
+                    firesignal(confirmButton.Activated)
+                end
+
+                -- Wait loop with break check
                 local timeWaited = 0
                 while timeWaited < 3 and AutoClickToggle.Value do
                     wait(1)
-                    timeWaited = timeWaited + 1
+                    timeWaited += 1
                 end
-                
+
                 if not AutoClickToggle.Value then break end
             end
         end)
     end
 end)
+
 
 
 local AuraSection = Tabs.Main:AddSection("Auto Aura")
