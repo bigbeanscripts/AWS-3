@@ -1,38 +1,10 @@
--- Function to get all valid egg names in alphabetical order, excluding "Egg Rewind"
-local function getEggNames()
-    local eggNames = {}
-    local zones = workspace:FindFirstChild("Zones")
-
-    if zones then
-        for _, zone in pairs(zones:GetChildren()) do
-            if zone:IsA("Folder") and not zone.Name:match("%d") then -- Ignore zones with numbers
-                local interactables = zone:FindFirstChild("Interactables")
-                if interactables then
-                    local eggs = interactables:FindFirstChild("Eggs")
-                    if eggs then
-                        for _, egg in pairs(eggs:GetChildren()) do
-                            if egg.Name ~= "Rewind" then
-                                table.insert(eggNames, egg.Name)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    table.sort(eggNames) -- Sort alphabetically
-    return eggNames
-end
-
-
 local Library = loadstring(game:HttpGetAsync("https://github.com/ActualMasterOogway/Fluent-Renewed/releases/latest/download/Fluent.luau"))()
 local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/SaveManager.luau"))()
 local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/InterfaceManager.luau"))()
 
 
 local Window = Library:Window{
-    Title = "Sumemer Event",
+    Title = "Arm Wrestling Simulator",
     SubTitle = "By Duckie",
     TabWidth = 160,
     Size =  UDim2.fromOffset(580, 460),
@@ -42,327 +14,398 @@ local Window = Library:Window{
     MinimizeKey = Enum.KeyCode.LeftShift
 }
 
+-- Constants
+local SEEDS = {
+    "Pear Seeds",
+    "Banana Seeds",
+    "Starfruit Seeds",
+    "Dragon Fruit Seeds"
+}
 
-local Tabs = {
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
-    AutoFight = Window:AddTab({ Title = "Auto Train/Fight", Icon = "crown" }),
-    Eggs = Window:AddTab({ Title = "Eggs", Icon = "egg" }),
-    Wheel = Window:AddTab({ Title = "Wheel", Icon = "ferris-wheel" }),
-    Merchant = Window:AddTab({ Title = "Merchant", Icon = "phosphor-shopping-cart-fill" }),
-    Fish = Window:AddTab({ Title = "Fish", Icon = "phosphor-fish" }),
-    Fossil = Window:AddTab({ Title = "Fossils", Icon = "phosphor-bone" }),
-    Quest = Window:AddTab({ Title = "Quest", Icon = "phosphor-flag" })
+local HARVEST_TIMES = {
+    ["Pear Seeds"] = 755,
+    ["Banana Seeds"] = 65,
+    ["Dragon Fruit Seeds"] = 185,
+    ["Starfruit Seeds"] = 245
+}
+
+local MERCHANT_ITEMS = {
+    ["Banana Seeds"] = {id = 1, amount = 30},
+    ["Pear Seeds"] = {id = 2, amount = 10},
+    ["Raspberrys"] = {id = 3, amount = 5}
+}
+
+local UPGRADE_ITEMS = {
+    ["Cookie"] = {name = "Cookie", tier = 1},
+    ["Rotten Banana"] = {name = "Banana", tier = 1},
+    ["Tasty Cookie"] = {name = "Cookie", tier = 2},
+    ["Pink Donut"] = {name = "Donut", tier = 1},
+    ["Rotten Starfruit"] = {name = "Starfruit", tier = 1},
+    ["Raspberry"] = {name = "Raspberry", tier = 1},
+    ["Rotten Dragon Fruit"] = {name = "Dragon Fruit", tier = 1},
+    ["Vanilla Donut"] = {name = "Donut", tier = 2},
+    ["Golden Pear"] = {name = "Golden Pear", tier = 2},
+    ["Normal Starfruit"] = {name = "Starfruit", tier = 2},
+    ["Fine Dragon Fruit"] = {name = "Dragon Fruit", tier = 2}
 }
 
 
 
 
+local Tabs = {
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
+    Event = Window:AddTab({ Title = "Event", Icon = "clock" }),
+    AutoFight = Window:AddTab({ Title = "Auto Train/Fight", Icon = "crown" }),
+    Eggs = Window:AddTab({ Title = "Eggs", Icon = "egg" }),
+    Machines = Window:AddTab({ Title = "Machines", Icon = "star" }),
+    Teleport = Window:AddTab({ Title = "Teleport", Icon = "rocket" }),
+    Alchemist = Window:AddTab({ Title = "Alchemist", Icon = "flask-conical"}),
+    Prestige = Window:AddTab({ Title = "Prestige", Icon = "phosphor-trophy-bold" }),
+    Garden = Window:AddTab({ Title = "Garden", Icon = "flower" }),
+    Main = Window:AddTab({ Title = "Misc", Icon = "shuffle" }),
+}
 
-local function GetCurrentZone()
-    local player = game.Players.LocalPlayer
 
-    if player:GetAttribute("ZoneSummerIsland") then
-        return "SummerIsland"
+
+
+-- Create SuperRB Section
+local EventSection = Tabs.Event:AddSection("Summer Event")
+
+-- Add Load Script Button
+EventSection:AddButton({
+    Title = "Load Event Script",
+    Description = "Loads my Summer Event script",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/Prison-Event/refs/heads/main/event"))()
     end
+})
 
-    -- Look through workspace as fallback
-    local duckZone = workspace.Zones:FindFirstChild("SummerIsland") or workspace.Zones:FindFirstChild("SummerIsland")
-    if duckZone then
-        return duckZone.Name
+
+
+-- Auto Train
+local function GetHighestZone(player)
+    local highestZone = -1
+    for name, value in pairs(player:GetAttributes()) do
+        if string.match(name, "^Zone%d+$") and value == true then
+            local zoneNum = tonumber(string.match(name, "%d+"))
+            if zoneNum and zoneNum > highestZone then
+                highestZone = zoneNum
+            end
+        end
     end
+    return tostring(highestZone)
+end
 
+local function GetBestQualifyingBag(player)
+    local zone = GetHighestZone(player)
+    local knuckleStrength = player:GetAttribute("KnuckleStrength") or 0
+    
+    if player:GetAttribute("VIP") then return zone, "VIP" end
+    
+    local punchBagData = require(game:GetService("ReplicatedStorage").Data.PunchBags)
+    local zoneData = punchBagData[zone]
+    local bestTier = "Tier1"
+    local highestRequired = 0
+    
+    for tier, data in pairs(zoneData) do
+        if data.StrengthRequired and 
+           knuckleStrength >= data.StrengthRequired and 
+           data.StrengthRequired > highestRequired then
+            bestTier = tier
+            highestRequired = data.StrengthRequired
+        end
+    end
+    
+    
+    return zone, bestTier
+end
+
+local function FindEquipmentInZone(zoneNumber, equipmentType, player)
+    local dataModule = {
+        Dumbells = game:GetService("ReplicatedStorage").Data.Dumbells,
+        Grips = game:GetService("ReplicatedStorage").Data.Grips,
+        Barbells = game:GetService("ReplicatedStorage").Data.Barbells,
+        ["Pull up bar"] = game:GetService("ReplicatedStorage").Data.PullupBars
+    }
+
+    local strengthAttributes = {
+        Dumbells = "TotalBicepPower",
+        Grips = "TotalHandStrength",
+        Barbells = "TotalBicepPower",
+        ["Pull up bar"] = "TotalHandStrength"
+    }
+
+    local module = dataModule[equipmentType]
+    if not module then return nil end
+
+    local data = require(module)
+    local zoneKey = tostring(zoneNumber)
+    local playerStrength = player:GetAttribute(strengthAttributes[equipmentType])
+
+    if data[zoneKey] then
+        local highestQualified = nil
+        for itemKey, item in pairs(data[zoneKey]) do
+            if item.StrengthRequired and playerStrength >= item.StrengthRequired then
+                if not highestQualified or tonumber(itemKey:match("%d+")) > tonumber(highestQualified:match("%d+")) then
+                    highestQualified = itemKey
+                end
+            end
+        end
+        return highestQualified
+    end
     return nil
 end
 
-local function GetBestDuckBag()
-    local player = game.Players.LocalPlayer
-    local currentZone = GetCurrentZone()
-    
-    if not currentZone then
-        return "Tier1"
-    end
-    
-    local knuckleStrength = player:GetAttribute("TotalSummerKnucklesV2") or 0
-    local punchBagData = require(game:GetService("ReplicatedStorage").Data.PunchBags)
-    
-    if player:GetAttribute("VIP") == true then
-        return "VIP"
-    end
-    
-    local bestTier = "Tier1"  
-    local highestRequired = 0
-    
-    if punchBagData and punchBagData[currentZone] then
-        for tier, data in pairs(punchBagData[currentZone]) do
-            if data.StrengthRequired and 
-               knuckleStrength >= data.StrengthRequired and 
-               data.StrengthRequired > highestRequired then
-                bestTier = tier
-                highestRequired = data.StrengthRequired
-            end
-        end
-    end
-    
-    return bestTier
-end
+local function GetHighestEquipment(player, equipmentType)
+    local attributes = player:GetAttributes()
+    local zones = {}
 
-local function GetBestDuckEquipment(equipmentType)
-    local player = game.Players.LocalPlayer
-    local currentZone = GetCurrentZone()
-    
-    if not currentZone then
-        return "SummerIsland1" -- Default equipment
-    end
-    
-    -- Determine which attribute and data to use based on equipment type
-    local attributeName, dataModule, defaultEquipment
-    
-    
-    if equipmentType == "Dumbells" then
-        attributeName = "TotalSummerBicepV2"
-        dataModule = "Dumbells"
-        defaultEquipment = "SummerIsland1"
-    elseif equipmentType == "Grips" then
-        attributeName = "TotalSummerGripV2"
-        dataModule = "Grips"
-        defaultEquipment = "SummerIsland1"
-    elseif equipmentType == "Barbells" then 
-        attributeName = "TotalSummerBicepV2"
-        dataModule = "Barbells"
-        defaultEquipment = "SummerIsland1"
-    else
-        -- Default to Dumbells if unknown type
-        attributeName = "TotalSummerBicepV2"
-        dataModule = "Dumbells"
-        defaultEquipment = "SummerIsland1"
-    end
-    
-    
-    local statValue = player:GetAttribute(attributeName) or 0
-    
-    local equipmentData
-    pcall(function()
-        equipmentData = require(game:GetService("ReplicatedStorage").Data[dataModule])
-    end)
-    
-    if not equipmentData then
-        return defaultEquipment
-    end
-    
-    local bestEquipment = defaultEquipment
-    local highestRequired = 0
-    
-    if equipmentData and equipmentData[currentZone] then
-        for name, data in pairs(equipmentData[currentZone]) do
-            if data.StrengthRequired and 
-               statValue >= data.StrengthRequired and 
-               data.StrengthRequired > highestRequired then
-                bestEquipment = name
-                highestRequired = data.StrengthRequired
+    -- Get zones that the player has unlocked
+    for attributeName, attributeValue in pairs(attributes) do
+        if string.match(attributeName, "^Zone%d+$") and attributeValue == true then
+            local zoneNumber = tonumber(string.match(attributeName, "%d+"))
+            if zoneNumber then
+                table.insert(zones, zoneNumber)
             end
         end
     end
 
-    return bestEquipment
+    -- Sort zones in descending order (highest zone first)
+    table.sort(zones, function(a, b) return a > b end)
+
+    -- Loop through the zones until equipment is found
+    for _, zoneNumber in ipairs(zones) do
+        local equipment = FindEquipmentInZone(zoneNumber, equipmentType, player)
+        if equipment then
+            return zoneNumber, equipment
+        end
+    end
+
+    return nil, nil
+end
+
+local function TeleportToPunchBag(player)
+    local highestZone = GetHighestZone(player)
+    local punchBagTier = GetBestQualifyingBag(player)
+
+    local punchBag = workspace.Zones[highestZone].Interactables.Training.PunchBags[punchBagTier]
+    if punchBag then
+        local punchBagPosition = punchBag:GetPivot()
+        local teleportPosition = punchBagPosition + punchBagPosition.LookVector * 0.5 -- Teleport in front by 0.5 units
+        player.Character:PivotTo(teleportPosition)
+    end
+end
+
+local function HandlePunchBag()
+    local player = game.Players.LocalPlayer
+    local zone, tier = GetBestQualifyingBag(player)
+    
+    -- Teleport
+    local bag = workspace.Zones[zone].Interactables.Training.PunchBags[tier]
+    if bag then
+        local bagCFrame = bag:GetPivot()
+        local teleportPos = bagCFrame * CFrame.new(0, 0, -5)
+        player.Character:PivotTo(teleportPos)
+        
+        -- Send stats
+        local args = {
+            [1] = zone,
+            [2] = tier
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
+    end
+end
+
+local function HandlePullUps()
+    local args = {
+        [1] = CFrame.new(-10838.837890625, -123.75142669677734, 1179.05224609375)
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.PullupBarService.RF.Place:InvokeServer(unpack(args))
+    
+    local statsArgs = {
+        [1] = "17",
+        [2] = "Tier4"
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.PullupBarService.RE.onGiveStats:FireServer(unpack(statsArgs))
 end
 
 
--- Add Training Section
+
 local TrainSection = Tabs.AutoFight:AddSection("Auto Train")
 
 local TrainingDropdown = Tabs.AutoFight:AddDropdown("TrainingSelect", {
     Title = "Select Training Type",
-    Values = {"Dumbells", "PunchBags", "Grips", "Barbells"}, 
+    Values = {"Dumbells", "Grips", "Barbells", "PunchBags", "Pull up bar"},
     Multi = false,
     Default = "Dumbells"
 })
 
 local AutoTrainToggle = Tabs.AutoFight:AddToggle("AutoTrain", {
     Title = "Auto Train",
-    Description = "If this gets an error, turn the toggle off and on again. It occurs when you switch training types with the toggle on :)",
+    Default = false
+})
+AutoTrainToggle:OnChanged(function()
+    if AutoTrainToggle.Value then
+
+        -- Simulated background click every 0.1s (excluding PunchBags and Pull up bar)
+        spawn(function()
+            while AutoTrainToggle.Value do
+                local selection = TrainingDropdown.Value
+                if selection ~= "PunchBags" and selection ~= "Pull up bar" then
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
+                end
+                task.wait(0.1)
+            end
+        end)
+
+        -- Equipment/Position check every 10 seconds
+        spawn(function()
+            while AutoTrainToggle.Value do
+                local selection = TrainingDropdown.Value
+                
+                if selection == "PunchBags" then
+                    -- Handle PunchBag
+                    HandlePunchBag()
+
+                    -- Send stats every 0.25 seconds while toggle is on
+                    while AutoTrainToggle.Value do  -- Check if the toggle is still on
+                        local zone, tier = GetBestQualifyingBag(game.Players.LocalPlayer)
+                        local args = {
+                            [1] = zone,
+                            [2] = tier
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
+                        wait(0.25)  -- Wait for 0.25 seconds before sending stats again
+                    end
+                elseif selection == "Pull up bar" then
+                    HandlePullUps()
+                else
+                    local zone, equipment = GetHighestEquipment(game.Players.LocalPlayer, selection)
+                    if zone and equipment then
+                        local args = {
+                            [1] = zone,
+                            [2] = selection,
+                            [3] = equipment
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+                    end
+                end
+                
+                wait(10)  -- Wait before checking again after 10 seconds
+            end
+        end)
+
+        -- Reequip/Stats update every 10 seconds
+        spawn(function()
+            while AutoTrainToggle.Value do
+                local selection = TrainingDropdown.Value
+                if selection == "PunchBags" then
+                    HandlePunchBag()
+                elseif selection == "Pull up bar" then
+                    HandlePullUps()
+                elseif (selection == "Grips" or selection == "Dumbells" or selection == "Barbells") 
+                    and _G.currentZone and _G.currentEquipment then
+                    local args = {
+                        [1] = tostring(_G.currentZone),
+                        [2] = selection,
+                        [3] = _G.currentEquipment
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+                end
+                wait(10)
+            end
+        end)
+
+        -- Click/Stats every 1 second
+        spawn(function()
+            while AutoTrainToggle.Value do
+                local selection = TrainingDropdown.Value
+                if selection == "Pull up bar" then
+                    local statsArgs = {
+                        [1] = "17",
+                        [2] = "Tier4"
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.PullupBarService.RE.onGiveStats:FireServer(unpack(statsArgs))
+                elseif selection ~= "PunchBags" then
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
+                end
+                wait(1)
+            end
+        end)
+    end
+end)
+
+
+
+local AutoTrainPullUpsToggle = Tabs.AutoFight:AddToggle("AutoTrainPullUps", {
+    Title = "Auto Train (Selected) and Pull Ups",
     Default = false
 })
 
--- Variable to store the current training equipment type
-local currentTrainingType = nil
-
-AutoTrainToggle:OnChanged(function()
-    if AutoTrainToggle.Value then
-        -- Store the selected training type when starting
-        currentTrainingType = TrainingDropdown.Value
-        
+AutoTrainPullUpsToggle:OnChanged(function()
+    if AutoTrainPullUpsToggle.Value then
         spawn(function()
-            local currentZone = GetCurrentZone()
-            
-            if not currentZone then
-                return
-            end
-            
-            if currentTrainingType == "Dumbells" then
-                -- Function to equip Dumbells
-                local function equipDumbells()
-                    local equipment = GetBestDuckEquipment("Dumbells")
-                    local args = {
-                        [1] = currentZone,
-                        [2] = "Dumbells", 
-                        [3] = equipment
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
-                end
-
-                -- Equip immediately
-                equipDumbells()
-
-                -- Click loop (every 0.1 seconds for faster gains)
-                spawn(function()
-                    while AutoTrainToggle.Value and currentTrainingType == "Dumbells" and TrainingDropdown.Value == "Dumbells" do
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                        wait(0.1)
-                    end
-                end)
-
-                -- Re-equip loop (every 5 seconds)
-                while AutoTrainToggle.Value and currentTrainingType == "Dumbells" and TrainingDropdown.Value == "Dumbells" do
-                    wait(5) -- Wait 5 seconds before re-equipping
-                    if AutoTrainToggle.Value and currentTrainingType == "Dumbells" and TrainingDropdown.Value == "Dumbells" then
-                        equipDumbells()
+            while AutoTrainPullUpsToggle.Value do
+                local selection = TrainingDropdown.Value
+                
+                if selection == "Grips" or selection == "Dumbells" or selection == "Barbells" then
+                    local zone, equipment = GetHighestEquipment(game.Players.LocalPlayer, selection)
+                    
+                    if zone and equipment then
+                        local args = {
+                            [1] = tostring(zone),
+                            [2] = selection,
+                            [3] = equipment
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
                     end
                 end
                 
-            elseif currentTrainingType == "Grips" then
-                -- Function to equip Grips
-                local function equipGrips()
-                    local equipment = GetBestDuckEquipment("Grips")
-                    local args = {
-                        [1] = currentZone,
-                        [2] = "Grips", 
-                        [3] = equipment
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
-                end
-
-                -- Equip immediately
-                equipGrips()
-
-                -- Click loop (every 0.1 seconds for faster gains)
-                spawn(function()
-                    while AutoTrainToggle.Value and currentTrainingType == "Grips" and TrainingDropdown.Value == "Grips" do
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                        wait(0.1)
-                    end
-                end)
-
-                -- Re-equip loop (every 5 seconds)
-                while AutoTrainToggle.Value and currentTrainingType == "Grips" and TrainingDropdown.Value == "Grips" do
-                    wait(5) -- Wait 5 seconds before re-equipping
-                    if AutoTrainToggle.Value and currentTrainingType == "Grips" and TrainingDropdown.Value == "Grips" then
-                        equipGrips()
-                    end
-                end
+                -- Regular training click
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
                 
-            elseif currentTrainingType == "Barbells" then
-                -- Function to equip Barbells
-                local function equipBarbells()
-                    local equipment = GetBestDuckEquipment("Barbells")
-                    local args = {
-                        [1] = currentZone,
-                        [2] = "Barbells", 
-                        [3] = equipment
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
-                end
-
-                -- Equip immediately
-                equipBarbells()
-
-                -- Click loop (every 0.1 seconds for faster gains)
-                spawn(function()
-                    while AutoTrainToggle.Value and currentTrainingType == "Barbells" and TrainingDropdown.Value == "Barbells" do
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                        wait(0.1)
-                    end
-                end)
-
-                -- Re-equip loop (every 5 seconds)
-                while AutoTrainToggle.Value and currentTrainingType == "Barbells" and TrainingDropdown.Value == "Barbells" do
-                    wait(5) -- Wait 5 seconds before re-equipping
-                    if AutoTrainToggle.Value and currentTrainingType == "Barbells" and TrainingDropdown.Value == "Barbells" then
-                        equipBarbells()
-                    end
-                end
-            else -- PunchBags
-                spawn(function() 
-                    local lastTeleport = 0
-                    while AutoTrainToggle.Value and currentTrainingType == "PunchBags" and TrainingDropdown.Value == "PunchBags" do
-                        local tier = GetBestDuckBag()
-                        
-                        -- Try to get the bag from workspace
-                        local bag = workspace.Zones[currentZone].Interactables.Training.PunchBags:FindFirstChild(tier)
-                        
-                        if bag then
-                            -- Only teleport every 5 seconds
-                            local currentTime = tick()
-                            if currentTime - lastTeleport >= 5 then
-                                local bagCFrame = bag:GetPivot()
-                                game.Players.LocalPlayer.Character:PivotTo(bagCFrame * CFrame.new(0, 0, -5))
-                                lastTeleport = currentTime
-                            end
-                            
-                            -- Use the punch bag service every 0.1 seconds for faster gains
-                            local args = {
-                                [1] = currentZone,
-                                [2] = tier,
-                                [3] = game.Players.LocalPlayer:GetAttribute("VIP") == true
-                            }
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
-                        end
-                        wait(0.1)
-                    end
-                end)
+                -- Pull ups handling
+                HandlePullUps()
+                
+                wait(0.1)
             end
         end)
-    else
-        -- Clear the current training type when stopping
-        currentTrainingType = nil
     end
 end)
-
--- Listen for dropdown value changes to update currentTrainingType when needed
-TrainingDropdown:OnChanged(function()
-    if AutoTrainToggle.Value then
-        -- If toggle is on, update current training and restart the training process
-        AutoTrainToggle:Set(false) -- Turn off current training
-        wait(0.1) -- Short delay to ensure loops are terminated
-        AutoTrainToggle:Set(true) -- Turn on with new selection
-    end
-end)
-
 
 -- UI section
 local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 
-local npcLocations = {
-    SummerIsland = workspace.GameObjects.ArmWrestling.SummerIsland.NPC,
-}
-
 local modelNames = {}
-local npcZones = {}
-local npcModels = {} -- Store actual NPC model by name
+local npcLocations = {} -- Store model locations for reference
+local armWrestlingFolder = workspace.GameObjects.ArmWrestling
 
--- Gather NPCs from all locations
-for zone, path in pairs(npcLocations) do
-    for _, npc in pairs(path:GetChildren()) do
-        if npc:IsA("Model") then
-            table.insert(modelNames, npc.Name)
-            npcZones[npc.Name] = zone
-            npcModels[npc.Name] = npc -- Store model reference
+-- Populate model names for dropdown
+local function findModels(folder)
+    for _, item in pairs(folder:GetChildren()) do
+        if item:IsA("Folder") and item.Name ~= "PVP" and item.Name ~= "6_OLD" then
+            local npcFolder = item:FindFirstChild("NPC")
+            if npcFolder then
+                for _, npc in pairs(npcFolder:GetChildren()) do
+                    if npc:IsA("Model") then
+                        table.insert(modelNames, npc.Name)
+                        npcLocations[npc.Name] = {folder = item.Name, npc = npc}
+                    end
+                end
+            end
         end
     end
 end
 
-table.sort(modelNames)
+-- Sort dropdown options alphabetically
+local function sortModels()
+    table.sort(modelNames)
+end
 
--- Dropdown
+findModels(armWrestlingFolder)
+sortModels()
+
+-- Dropdown for selecting boss
 local modelDropdown = Tabs.AutoFight:AddDropdown("ModelDropdown", {
     Title = "Select Boss",
     Values = modelNames,
@@ -393,16 +436,17 @@ local ArmwrestleServiceRF = KnitServices:WaitForChild("ArmWrestleService"):WaitF
 -- Variables
 local autoClickThreads = {}
 local autoFightLoop = nil
+local lastFightEnded = true
 
--- Returns NPC instance based on selected name
-local function getNPCReference(selectedName)
-    return npcModels[selectedName]
+-- Get NPC reference from name
+local function getNPCReference(name)
+    local ref = npcLocations[name]
+    return ref and ref.npc
 end
 
 -- Auto Click toggle handler
 AutoClickToggle:OnChanged(function()
     if AutoClickToggle.Value then
-        -- Clear any previous threads
         for _, thread in pairs(autoClickThreads) do
             if typeof(thread) == "thread" then
                 task.cancel(thread)
@@ -413,7 +457,7 @@ AutoClickToggle:OnChanged(function()
         autoClickThreads = {}
 
         task.spawn(function()
-            for i = 1, 150 do -- Consider reducing this for performance
+            for i = 1, 150 do
                 local threadData = { active = true }
                 table.insert(autoClickThreads, threadData)
 
@@ -431,7 +475,6 @@ AutoClickToggle:OnChanged(function()
             end
         end)
     else
-        -- Disable all click threads
         for _, thread in pairs(autoClickThreads) do
             if typeof(thread) == "thread" then
                 task.cancel(thread)
@@ -443,7 +486,7 @@ AutoClickToggle:OnChanged(function()
     end
 end)
 
--- Auto Fight toggle handler
+-- Auto Fight toggle handler 
 AutoFightToggle:OnChanged(function()
     if AutoFightToggle.Value then
         if autoFightLoop then task.cancel(autoFightLoop) end
@@ -458,7 +501,7 @@ AutoFightToggle:OnChanged(function()
                         end)
                     end
                 end
-                task.wait(0.5) -- fight every 0.5s
+                task.wait(0.1) -- 0.1 second interval
             end
         end)
     else
@@ -469,124 +512,261 @@ AutoFightToggle:OnChanged(function()
     end
 end)
 
-local EggSection = Tabs.Eggs:AddSection("Eggs")
 
--- Hatch Amount Dropdown
-local HatchAmountDropdown = Tabs.Eggs:AddDropdown("HatchAmount", {
-    Title = "Hatch Amount",
-    Values = {"1x", "3x", "8x", "30x", "Max"},
-    Multi = false,
-    Default = "1x"
-})
 
--- Egg Selection Dropdown (Populated Dynamically)
-local eggNames = getEggNames()
-local EggDropdown = Tabs.Eggs:AddDropdown("EggSelect", {
-    Title = "Select Egg",
-    Values = eggNames,
-    Multi = false,
-    Default = eggNames[1] or "None"
-})
 
--- Auto Hatch Toggle
-local AutoHatchToggle = Tabs.Eggs:AddToggle("AutoHatch", {
-    Title = "Auto Hatch",
-    Default = false
-})
 
--- Utility function to check if egg is inside RotatingEggs
-local function isRotatingEgg(eggName)
-    local rotatingEggs = workspace:FindFirstChild("GameObjects") and workspace.GameObjects:FindFirstChild("RotatingEggs")
-    if not rotatingEggs then return false end
-    return rotatingEggs:FindFirstChild(eggName) ~= nil
+-- Default values
+local availableEggs = {}
+local selectedEgg = ""
+local autoHatchEnabled = false
+local eventEggAutoHatchEnabled = false
+local hatchMultiplier = "1x"
+local petData = require(game:GetService("ReplicatedStorage").Data.EggData)
+
+-- Fetch egg names from EggData
+local function fetchAvailableEggs()
+    availableEggs = {}
+    local eggData = require(game:GetService("ReplicatedStorage").Data.EggData)
+
+    for eggName, _ in pairs(eggData) do
+        if not (eggName:match("Limited") or eggName:match("Event") or eggName:match("MusicalDragon") or eggName:match("100x") or eggName:match("Sour") or eggName:match("Gem") or eggName:match("Cyberpunk")) then
+            if eggName:sub(-3) == "Egg" then
+                eggName = eggName:sub(1, -4)
+            end
+            table.insert(availableEggs, eggName)
+        end
+    end
+
+    -- Sort alphabetically
+    table.sort(availableEggs)
 end
 
-AutoHatchToggle:OnChanged(function()
-    if AutoHatchToggle.Value then
-        spawn(function()
-            while AutoHatchToggle.Value do
-                local selectedEgg = EggDropdown.Value
-                local hatchMultiplier = HatchAmountDropdown.Value
+-- Fetch available eggs initially
+fetchAvailableEggs()
 
-                local args = {}
+-- Function to send remote args
+local function SendRemote(args)
+    local eggService = game:GetService("ReplicatedStorage"):FindFirstChild("Packages")
+        and game:GetService("ReplicatedStorage").Packages:FindFirstChild("Knit")
+        and game:GetService("ReplicatedStorage").Packages.Knit.Services
+        and game:GetService("ReplicatedStorage").Packages.Knit.Services.EggService
+        and game:GetService("ReplicatedStorage").Packages.Knit.Services.EggService.RF
+        and game:GetService("ReplicatedStorage").Packages.Knit.Services.EggService.RF.purchaseEgg
 
-                local rotating = isRotatingEgg(selectedEgg)
+    if eggService then
+        eggService:InvokeServer(unpack(args))
+    end
+end
 
-                if rotating then
-                    -- Use 7th arg = true for rotating eggs (like 2x luck eggs)
-                    if hatchMultiplier == "1x" then
-                        args = {selectedEgg, nil, nil, false, nil, nil, true}
-                    elseif hatchMultiplier == "3x" then
-                        args = {selectedEgg, nil, true, false, nil, nil, true}
-                    elseif hatchMultiplier == "8x" then
-                        args = {selectedEgg, nil, false, true, true, nil, true}
-                    elseif hatchMultiplier == "30x" then
-                        args = {selectedEgg, nil, nil, false, nil, true, true}
-                    elseif hatchMultiplier == "Max" then
-                        args = {selectedEgg, nil, nil, false, nil, true, true}
-                    end
-                else
-                    -- Normal hatch without 7th arg for other eggs
-                    if hatchMultiplier == "1x" then
-                        args = {selectedEgg, nil, nil, false, nil}
-                    elseif hatchMultiplier == "3x" then
-                        args = {selectedEgg, nil, true, false}
-                    elseif hatchMultiplier == "8x" then
-                        args = {selectedEgg, nil, false, true, true}
-                    elseif hatchMultiplier == "30x" then
-                        args = {selectedEgg, nil, nil, false, nil, true}
-                    elseif hatchMultiplier == "Max" then
-                        args = {selectedEgg, nil, nil, false, nil, true}
-                    end
+-- Function to start auto-hatching for normal eggs
+local function startAutoHatch()
+    local args = {}
+
+    -- Set the correct args based on hatchMultiplier
+    if hatchMultiplier == "1x" then
+        args = {selectedEgg, nil, false, true, false}
+    elseif hatchMultiplier == "3x" then
+        args = {selectedEgg, nil, true, false}
+    elseif hatchMultiplier == "8x" then
+        args = {selectedEgg, nil, false, true, true}
+    elseif hatchMultiplier == "30x" then
+        args = {selectedEgg, nil, nil, false, nil, true}
+    elseif hatchMultiplier == "Max" then
+        args = {selectedEgg, nil, nil, false, nil, true}
+    end
+
+    -- Loop and send remote arguments every 0.2 seconds
+    spawn(function()
+        while autoHatchEnabled do
+            -- Send the remote arguments
+            if #args > 0 then
+                SendRemote(args)
+            end
+            wait(0.2)  -- Wait for 0.2 seconds before sending again
+        end
+    end)
+end
+
+-- Toggle auto-hatching on/off
+local function toggleAutoHatch(value)
+    autoHatchEnabled = value
+    if autoHatchEnabled then
+        spawn(startAutoHatch)
+    end
+end
+
+
+-- Function to teleport the player to the selected egg's model world pivot
+local function teleportToSelectedEgg()
+    local player = game.Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+    local eggModel
+    for _, zone in pairs(workspace.Zones:GetChildren()) do
+        local eggsFolder = zone:FindFirstChild("Interactables") and zone.Interactables:FindFirstChild("Eggs")
+        if eggsFolder then
+            for _, model in pairs(eggsFolder:GetChildren()) do
+                if model.Name:lower():find(selectedEgg:lower()) then
+                    eggModel = model
+                    break
                 end
-
-                -- Invoke server call to hatch egg
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.EggService.RF.purchaseEgg:InvokeServer(unpack(args))
-
-                wait(0.1)
             end
-        end)
-    end
-end)
-
-local EggStatusParagraph = Tabs.Eggs:Paragraph("EggInfo", {
-    Title = "Note",
-    Content = "If the egg selected has a 2x luck version, it will hatch that, and return to normal after.",
-    ContentAlignment = Enum.TextXAlignment.Left
-})
-
-local WheelSection = Tabs.Wheel:AddSection("Pirate Wheel")
-
-local GhostFortuneSpinDropdown = Tabs.Wheel:AddDropdown("GhostFortuneSpinAmount", {
-    Title = "Spin Amount",
-    Description = "Select Wheel Spin Amount",
-    Values = {"1x", "3x", "10x"},
-    Multi = false,
-    Default = "1x"
-})
-
-local AutoGhostFortuneToggle = Tabs.Wheel:AddToggle("AutoGhostFortuneSpin", {
-    Title = "Auto spin pirate wheel",
-    Default = false
-})
-
-AutoGhostFortuneToggle:OnChanged(function()
-    if AutoGhostFortuneToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoGhostFortuneToggle.Value then break end
-                
-                local args = {
-                    [1] = "Pirate Fortune",
-                    [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
-                
-                wait(1)
+            if eggModel then
+                break
             end
-        end)
+        end
     end
-end)
+
+    if eggModel then
+        local originalCFrame = humanoidRootPart.CFrame
+        local targetCFrame = eggModel:GetPivot()
+        humanoidRootPart.CFrame = targetCFrame * CFrame.new(0, 0, -5) -- Slightly in front
+
+        -- Teleport back after the specified delay
+        wait(teleportDelay)
+        humanoidRootPart.CFrame = originalCFrame
+    else
+        warn("Egg model not found in workspace: " .. selectedEgg)
+    end
+end
+
+-- Add dropdown to select eggs with search feature
+Tabs.Eggs:AddDropdown("SelectEggDropdown", {
+    Title = "Select Egg",
+    Values = availableEggs,
+    Default = selectedEgg,
+    Searchable = true,
+    Callback = function(selected)
+        selectedEgg = selected
+    end
+})
+
+-- Add dropdown to select hatch multiplier (1x, 3x, 8x)
+Tabs.Eggs:AddDropdown("SelectHatchMultiplier", {
+    Title = "Hatch Multiplier",
+    Values = { "1x", "3x", "8x", "30x", "Max" },
+    Default = hatchMultiplier,
+    Callback = function(selected)
+        hatchMultiplier = selected
+    end
+})
+
+
+
+-- Add toggle to start/stop auto-hatching
+Tabs.Eggs:AddToggle("AutoHatchToggle", {
+    Title = "Auto Hatch",
+    Default = false,
+    Callback = function(value)
+        toggleAutoHatch(value)
+    end
+})
+
+
+
+Tabs.Eggs:AddSection("Auto Delete -- Teleport")
+
+-- Add input to set the delay between teleports
+Tabs.Eggs:AddInput("TeleportDelayInput", {
+    Title = "Teleport back from egg delay",
+    Default = teleportDelay,
+    Placeholder = "Enter teleport back delay",
+    Numeric = true, -- Only allows numbers
+    Finished = false, -- Only calls callback when you press enter
+    Callback = function(value)
+        teleportDelay = tonumber(value) or teleportDelay
+    end
+})
+
+-- Add button to teleport to the selected egg's model world pivot
+Tabs.Eggs:AddButton({
+    Title = "Teleport to Selected Egg (and back)",
+    Description = "Teleport to the selected egg -- If its still a model -- so you can auto delete pets. The teleport input is for how long you will stay at the egg, before teleporting back.",
+    Callback = function()
+        teleportToSelectedEgg()
+    end
+})
+
+
+
+
+local ScriptsSection = Tabs.Machines:AddSection("Machine Loadstring")
+
+-- Add loadstring button
+ScriptsSection:AddButton({
+    Title = "Load Machines Script",
+    Description = "Run Machines Loadstring (Its a big script so it might take a while to load)",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/Mutate-/refs/heads/main/Cosmic"))()
+    end
+})
+
+
+
+local Teleport = Tabs.Teleport
+
+local TeleportSection = Tabs.Teleport:AddSection("Zones")
+
+-- Function to teleport player using remote event
+local function teleportTo(zoneName)
+    local args = {
+        [1] = workspace.Zones:FindFirstChild(zoneName).Interactables.Teleports.Locations.Spawn
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+end
+
+-- Get all zones and store in a table for sorting (excluding "Frame")
+local zones = {}
+for _, zone in ipairs(workspace.Zones:GetChildren()) do
+    if zone.Name ~= "Frame" then  -- Only add zones that aren't named exactly "Frame"
+        table.insert(zones, zone)
+    end
+end
+
+-- Custom sorting function
+local function sortZones(a, b)
+    -- Extract numbers from zone names if they exist
+    local numA = tonumber(string.match(a.Name, "%d+"))
+    local numB = tonumber(string.match(b.Name, "%d+"))
+    
+    if numA and numB then
+        -- If both names contain numbers, sort numerically
+        return numA < numB
+    elseif numA then
+        -- If only first name has number, it goes after
+        return false
+    elseif numB then
+        -- If only second name has number, it goes after
+        return true
+    else
+        -- If no numbers, sort alphabetically
+        return a.Name:lower() < b.Name:lower()
+    end
+end
+
+-- Sort the zones
+table.sort(zones, sortZones)
+
+-- Function to format zone name
+local function formatZoneName(zoneName)
+    local number = string.match(zoneName, "^(%d+)$")
+    if number then
+        return "World " .. number
+    end
+    return zoneName
+end
+
+-- Add buttons for each sorted zone
+for _, zone in ipairs(zones) do
+    TeleportSection:AddButton({
+        Title = formatZoneName(zone.Name),
+        Callback = function()
+            teleportTo(zone.Name)
+        end
+    })
+end
 
 
 -- Services
@@ -597,40 +777,39 @@ local Knit = require(ReplicatedStorage.Packages.Knit)
 -- Player
 local player = Players.LocalPlayer
 
--- Get all possible items from LimitedMerchant module (Pirate Merchant only)
+-- Get all possible items from LimitedMerchant module
 local function getAllItems()
     local LimitedMerchant = require(ReplicatedStorage.Data.LimitedMerchant)
     local allItems = {}
     local slotItemMap = {} -- Track items by slot and title to avoid duplicates
     
-    local merchantName = "Pirate Merchant"
-    local merchantData = LimitedMerchant[merchantName]
-    
-    if merchantData and merchantData.Items then
-        for slotIndex, itemList in pairs(merchantData.Items) do
-            for itemIndex, item in ipairs(itemList) do
-                local title = item.Title or "Unknown"
-                local key = merchantName .. ":" .. slotIndex .. ":" .. title
-                
-                -- Only add if this exact item in this slot hasn't been added yet
-                if not slotItemMap[key] then
-                    local itemName = string.format("%s - %s (Slot %s) (%.0f %s)",
-                        title,
-                        merchantName,
-                        slotIndex,
-                        item.Price or 0,
-                        typeof(item.Currency) == "string" and item.Currency or (typeof(item.Currency) == "table" and item.Currency.Item or "Unknown Currency")
-                    )
+    for merchantName, merchantData in pairs(LimitedMerchant) do
+        if merchantData.Items then
+            for slotIndex, itemList in pairs(merchantData.Items) do
+                for itemIndex, item in ipairs(itemList) do
+                    local title = item.Title or "Unknown"
+                    local key = merchantName .. ":" .. slotIndex .. ":" .. title
                     
-                    table.insert(allItems, {
-                        name = itemName,
-                        merchant = merchantName,
-                        slot = tonumber(slotIndex),
-                        index = itemIndex,
-                        raw = item
-                    })
-                    
-                    slotItemMap[key] = true
+                    -- Only add if this exact item in this slot hasn't been added yet
+                    if not slotItemMap[key] then
+                        local itemName = string.format("%s - %s (Slot %s) (%.0f %s)",
+                            title,
+                            merchantName,
+                            slotIndex,
+                            item.Price or 0,
+                            typeof(item.Currency) == "string" and item.Currency or (typeof(item.Currency) == "table" and item.Currency.Item or "Unknown Currency")
+                        )
+                        
+                        table.insert(allItems, {
+                            name = itemName,
+                            merchant = merchantName,
+                            slot = tonumber(slotIndex),
+                            index = itemIndex,
+                            raw = item
+                        })
+                        
+                        slotItemMap[key] = true
+                    end
                 end
             end
         end
@@ -653,25 +832,15 @@ local function getLiveStockData()
     until replica or tick() - startTime > 5
 
     local liveData = {}
-    
     if replica and replica.Data and replica.Data.LimitedMerchant then
-        -- Only get data for Pirate Merchant
-        local merchantName = "Pirate Merchant"
-        local merchantData = replica.Data.LimitedMerchant[merchantName]
-        
-        if merchantData and merchantData.Items then
-            for slotIndex, itemData in pairs(merchantData.Items) do
-                -- Get the actual item details from the LimitedMerchant module
-                local LimitedMerchant = require(ReplicatedStorage.Data.LimitedMerchant)
-                local currentItem = LimitedMerchant[merchantName].Items[slotIndex][itemData.Index]
-                
-                -- Store more detailed information including the title for easier matching
-                liveData[merchantName .. ":" .. slotIndex] = {
-                    stock = itemData.Stock,
-                    index = itemData.Index,
-                    title = currentItem and currentItem.Title or "Unknown",
-                    fullItem = currentItem
-                }
+        for merchantName, merchantData in pairs(replica.Data.LimitedMerchant) do
+            if merchantData.Items then
+                for slotIndex, itemData in pairs(merchantData.Items) do
+                    liveData[merchantName .. ":" .. slotIndex] = {
+                        stock = itemData.Stock,
+                        index = itemData.Index
+                    }
+                end
             end
         end
     end
@@ -680,7 +849,7 @@ local function getLiveStockData()
 end
 
 -- UI Section
-local MerchantSection = Tabs.Merchant:AddSection("Pirate Merchant")
+local MerchantSection = Tabs.Main:AddSection("Merchants")
 
 -- Get all items list and build name list + map
 local allItemDataList = getAllItems()
@@ -696,8 +865,8 @@ table.sort(allItemNames)
 
 -- Dropdown UI (before toggle)
 local MerchantDropdown = MerchantSection:AddDropdown("MerchantSelect", {
-    Title = "Select Pirate Merchant Item(s)",
-    Description = "Choose items to auto-buy from Pirate Merchant.",
+    Title = "Select Merchant Item(s)",
+    Description = "Choose items to auto-buy from merchants.",
     Values = allItemNames,
     Multi = true,
     Searchable = true,
@@ -709,22 +878,14 @@ local selectedMerchantItems = {}
 
 -- Toggle for Auto Buying (below dropdown)
 local AutoBuyToggle = MerchantSection:AddToggle("AutoBuy", {
-    Title = "Auto Buy Pirate Items",
+    Title = "Auto Buy Items",
     Default = false
 })
 
 -- Paragraph to show selected items BELOW the toggle
 local SelectedItemsParagraph = MerchantSection:Paragraph("SelectedItemsDisplay", {
-    Title = "Selected Pirate Items",
+    Title = "Selected Items",
     Content = "None selected",
-    TitleAlignment = "Middle",
-    ContentAlignment = Enum.TextXAlignment.Left
-})
-
--- Status paragraph to show recent activity
-local StatusParagraph = MerchantSection:Paragraph("StatusDisplay", {
-    Title = "Status",
-    Content = "Waiting to start...",
     TitleAlignment = "Middle",
     ContentAlignment = Enum.TextXAlignment.Left
 })
@@ -750,505 +911,32 @@ end)
 -- Auto Buy Loop
 AutoBuyToggle:OnChanged(function(enabled)
     if enabled then
-        StatusParagraph:SetValue("Starting auto-buy loop...")
-        
         task.spawn(function()
             while AutoBuyToggle.Value do
                 local liveData = getLiveStockData()
-                local purchasesMade = false
                 
-                -- Check for each selected item
                 for itemName, isSelected in pairs(selectedMerchantItems) do
                     if isSelected then
                         local info = allItemDataMap[itemName]
-                        
                         if info then
-                            local merchantName = info.merchant
-                            local slot = info.slot
-                            local merchantSlotKey = merchantName .. ":" .. tostring(slot)
+                            local merchantSlotKey = info.merchant .. ":" .. tostring(info.slot)
                             local liveInfo = liveData[merchantSlotKey]
                             
-                            -- Check if this slot has an item with stock
-                            if liveInfo and liveInfo.stock and liveInfo.stock > 0 then
-                                -- Check if the current item in this slot is the one we want to buy
-                                -- Compare titles for safer matching
-                                local itemTitle = info.raw.Title
-                                if itemTitle == liveInfo.title then
-                                    StatusParagraph:SetValue("Found selected item: " .. itemTitle .. "\nAttempting purchase...")
-                                    
-                                    local success, result = pcall(function()
-                                        return ReplicatedStorage.Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(merchantName, slot)
-                                    end)
-                                    
-                                    if success then
-                                        StatusParagraph:SetValue("Successfully purchased: " .. itemTitle)
-                                        purchasesMade = true
-                                    else
-                                        StatusParagraph:SetValue("Failed to purchase: " .. itemTitle .. "\nError: " .. tostring(result))
-                                    end
-                                    
-                                    -- Short delay after purchasing
-                                    task.wait(0.5)
-                                end
+                            if liveInfo and liveInfo.index == info.index and liveInfo.stock and liveInfo.stock > 0 then
+                                local success, err = pcall(function()
+                                    ReplicatedStorage.Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(info.merchant, info.slot)
+                                end)
                             end
                         end
                     end
                 end
-                
-                if not purchasesMade then
-                    StatusParagraph:SetValue("Checking for selected items...\nLast check: " .. os.date("%X"))
-                end
-                
-                -- Wait before next check cycle
+
                 task.wait(1.5)
             end
-            
-            StatusParagraph:SetValue("Auto-buy stopped.")
         end)
-    else
-        StatusParagraph:SetValue("Auto-buy disabled.")
     end
 end)
 
-
--- Create fishing section in the Fish tab
-local FishSection = Tabs.Fish:AddSection("Auto Fish")
-
--- Create toggle for auto fishing with anchoring
-local AutoFishToggle = Tabs.Fish:AddToggle("AutoFish", {
-    Title = "Auto Fish",
-    Description = "Automatically catch fish with a 100% success chance."
-})
-
--- Create status paragraph to track fishing status
-local FishingStatusParagraph = Tabs.Fish:Paragraph("FishingStatus", {
-    Title = "Fishing Status",
-    Content = "Toggle on to start fishing",
-    TitleAlignment = "Middle",
-    ContentAlignment = Enum.TextXAlignment.Left
-})
-
-local FishingNote = Tabs.Fish:Paragraph("FishingNote", {
-    Title = "Note",
-    Content = "You need to be in the water for this to work. This will break if auto fight/train is enabled.",
-    TitleAlignment = "Middle",
-    ContentAlignment = Enum.TextXAlignment.Left
-})
-
-Tabs.Fish:AddButton({
-    Title = "Teleport to normal fishing water",
-    Description = "Teleports you to the normal fishing water area.",
-    Callback = function()
-        local Players = game:GetService("Players")
-        local LocalPlayer = Players.LocalPlayer
-        local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-
-        -- Target world coordinates
-        local targetPosition = Vector3.new(-2163.53198, 33.6534805, 5059.24854, 0.997577608, 6.44639631e-09, -0.0695620999, -3.10816528e-09, 1, 4.80974549e-08, 0.0695620999, -4.77647362e-08, 0.997577608)
-
-        -- Teleport the player to the position
-        if Character and Character:FindFirstChild("HumanoidRootPart") then
-            Character:PivotTo(CFrame.new(targetPosition))
-        end
-    end
-})
-
-Tabs.Fish:AddButton({
-    Title = "Teleport to the fossil fishing area",
-    Description = "Teleport to the fossil fishing area.",
-    Callback = function()
-        local Players = game:GetService("Players")
-        local LocalPlayer = Players.LocalPlayer
-        local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-
-        -- Target world coordinates
-        local targetPosition = Vector3.new(-2441.73804, 35.4731598, 5208.7251, -0.907976687, 2.79992207e-08, -0.419020712, 2.57414463e-08, 1, 1.10414291e-08, 0.419020712, -7.60838392e-10, -0.907976687)
-
-        -- Teleport the player to the position
-        if Character and Character:FindFirstChild("HumanoidRootPart") then
-            Character:PivotTo(CFrame.new(targetPosition))
-        end
-    end
-})
-
-
-
--- Variables for fishing
-local autoFishingActive = false
-local currentFishingState = "idle"
-local reelingConnection = nil
-local waitingStartTime = 0  -- Track when waiting phase started
-local fishStats = {
-    totalCaught = 0,
-    startTime = 0,
-}
-
--- Store original fishing controller functions
-local originalUpdateReeling = nil
-local originalUpdateFishPosition = nil
-local originalFishingEnd = nil
-
--- Function to update the status paragraph
-local function updateFishingStatus()
-    local timeElapsed = os.time() - fishStats.startTime
-    local statusText = "State: " .. currentFishingState:gsub("^%l", string.upper)
-    statusText = statusText .. "\nCaught: " .. fishStats.totalCaught
-    
-    -- Add waiting timer when in waiting state
-    if currentFishingState == "waiting" and waitingStartTime > 0 then
-        local waitTime = os.time() - waitingStartTime
-        statusText = statusText .. "\nWaiting: " .. waitTime .. "s"
-    end
-    
-    if timeElapsed > 0 and AutoFishToggle.Value then
-        local rate = math.floor(fishStats.totalCaught / (timeElapsed / 60) * 10) / 10
-        statusText = statusText .. "\nRate: " .. rate .. " fish/min"
-        statusText = statusText .. "\nRunning: " .. math.floor(timeElapsed / 60) .. "m " .. timeElapsed % 60 .. "s"
-    end
-
-    pcall(function()
-        FishingStatusParagraph:SetValue(statusText)
-    end)
-end
-
--- Function to simulate input
-local function simulateInput(inputType, keyCode, began)
-    local fakeInput = {
-        UserInputType = inputType or Enum.UserInputType.MouseButton1,
-        KeyCode = keyCode or Enum.KeyCode.Unknown
-    }
-    
-    pcall(function()
-        local FishingController = require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
-        if began then
-            FishingController.InputBegan(fakeInput, false)
-        else
-            FishingController.InputEnded(fakeInput, false)
-        end
-    end)
-end
-
--- Function to force re-cast
-local function forceRecast()
-    pcall(function()
-        local FishingController = require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
-        
-        -- Stop current fishing state
-        FishingController.FishingEnd(0) -- End with failure to reset
-        
-        -- Reset state
-        currentFishingState = "recasting"
-        waitingStartTime = 0
-        updateFishingStatus()
-        
-        -- Wait a moment then restart
-        spawn(function()
-            wait(1)
-            if AutoFishToggle.Value and autoFishingActive then
-                -- Start new cast
-                currentFishingState = "casting"
-                updateFishingStatus()
-                
-                simulateInput(Enum.UserInputType.MouseButton1, nil, true)
-                task.wait(0.1)
-                task.wait(math.random(0.5, 1.5))
-                simulateInput(Enum.UserInputType.MouseButton1, nil, false)
-                
-                task.wait(1)
-                currentFishingState = "waiting"
-                waitingStartTime = os.time()
-                updateFishingStatus()
-            end
-        end)
-    end)
-end
-
--- Function to hook fishing controller with anchoring
-local function hookFishingController()
-    local success, FishingController = pcall(function()
-        return require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
-    end)
-    
-    if not success then return false end
-    
-    -- Store original functions
-    originalUpdateReeling = FishingController.UpdateReeling
-    originalUpdateFishPosition = FishingController.UpdateFishPosition
-    originalFishingEnd = FishingController.FishingEnd
-    
-    -- Hook UpdateFishPosition to prevent fish movement when anchored
-    FishingController.UpdateFishPosition = function(...)
-        if AutoFishToggle.Value and FishingController.Reeling then
-            -- Don't update fish position when anchored during reeling
-            return
-        end
-        return originalUpdateFishPosition(...)
-    end
-    
-    -- Hook UpdateReeling with anchoring system
-    FishingController.UpdateReeling = function(...)
-        if not AutoFishToggle.Value then
-            -- Normal behavior when not anchored
-            return originalUpdateReeling(...)
-        end
-        
-        -- Custom anchored behavior
-        local var23_upvw = FishingController._reelingConnection
-        if var23_upvw then
-            var23_upvw:Disconnect()
-        end
-        
-        -- Set up anchored reeling loop
-        local var26_upvw = 0.65
-        local PlayerGui = game.Players.LocalPlayer.PlayerGui
-        local FishingBar = PlayerGui.Fishing.Bar
-        local Inner = FishingBar.Inner
-        local ProgressBar = FishingBar.Progress.Bar
-        
-        local TweenService = game:GetService("TweenService")
-        local CurrentCamera = workspace.CurrentCamera
-        
-        local BackgroundColor3_upvr_2 = Color3.fromRGB(134, 26, 26)
-        local BackgroundColor3_upvr = Color3.fromRGB(255, 56, 56)
-        local OriginalInnerColor = Inner.BackgroundColor3
-        local OriginalBackgroundColor = Inner.Background.BackgroundColor3
-        
-        local TweenInfo_new_result1_upvr = TweenInfo.new(0.05, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
-        
-        var23_upvw = game:GetService("RunService").RenderStepped:Connect(function(deltaTime)
-            if not AutoFishToggle.Value then
-                var23_upvw:Disconnect()
-                return
-            end
-            
-            -- Check if we should continue reeling
-            if not FishingController.Reeling then
-                var23_upvw:Disconnect()
-                return
-            end
-            
-            -- Keep inner bar centered and stationary
-            Inner.Position = UDim2.fromScale(0.5, Inner.Position.Y.Scale)
-            
-            -- Since both are centered, they should always overlap
-            local isOverlapping = true
-            
-            -- Update progress based on overlap
-            if isOverlapping then
-                var26_upvw = var26_upvw + deltaTime / 10
-                Inner.BackgroundColor3 = OriginalInnerColor
-                Inner.Background.BackgroundColor3 = OriginalBackgroundColor
-            else
-                var26_upvw = var26_upvw - deltaTime / 10
-                Inner.BackgroundColor3 = BackgroundColor3_upvr_2
-                Inner.Background.BackgroundColor3 = BackgroundColor3_upvr
-            end
-            
-            -- Clamp progress
-            var26_upvw = math.clamp(var26_upvw, 0, 1)
-            
-            -- Update progress bar
-            TweenService:Create(ProgressBar, TweenInfo_new_result1_upvr, {
-                Size = UDim2.fromScale(var26_upvw, 1)
-            }):Play()
-            
-            -- Update camera FOV
-            TweenService:Create(CurrentCamera, TweenInfo_new_result1_upvr, {
-                FieldOfView = 70 + (var26_upvw * 20)
-            }):Play()
-            
-            -- Check for completion
-            if var26_upvw >= 1 then
-                FishingController.FishingEnd(1) -- Success
-            elseif var26_upvw <= 0 then
-                FishingController.FishingEnd(0) -- Failure
-            end
-        end)
-        
-        -- Store connection for cleanup
-        FishingController._reelingConnection = var23_upvw
-    end
-    
-    -- Hook the fishing end function to track catches and restart
-    FishingController.FishingEnd = function(result, ...)
-        local returnValue = originalFishingEnd(result, ...)
-        
-        -- Clean up reeling connection
-        if FishingController._reelingConnection then
-            FishingController._reelingConnection:Disconnect()
-            FishingController._reelingConnection = nil
-        end
-        
-        -- Track successful catches
-        if result == 1 then
-            fishStats.totalCaught = fishStats.totalCaught + 1
-        end
-        
-        currentFishingState = "idle"
-        waitingStartTime = 0  -- Reset waiting timer
-        updateFishingStatus()
-        
-        -- Restart auto fishing after a delay if still enabled
-        if AutoFishToggle.Value and autoFishingActive then
-            spawn(function()
-                wait(0.75) -- Wait exactly 1 second after fishing ends
-                if AutoFishToggle.Value and autoFishingActive then
-                    autoFishingLoop()
-                end
-            end)
-        end
-        
-        return returnValue
-    end
-    
-    return true
-end
-
--- Main auto fishing loop
-function autoFishingLoop()
-    if not AutoFishToggle.Value or autoFishingActive then
-        return
-    end
-    
-    autoFishingActive = true
-    
-    spawn(function()
-        while AutoFishToggle.Value and autoFishingActive do
-            local character = game.Players.LocalPlayer.Character
-            if not character then
-                task.wait(1)
-                continue
-            end
-            
-            local FishingController = require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
-            
-            -- Check if we have a fishing rod equipped or in backpack
-            local hasFishingRod = character:FindFirstChild("FishingRod") or game.Players.LocalPlayer.Backpack:FindFirstChild("FishingRod")
-            
-            if not hasFishingRod then
-                currentFishingState = "no rod"
-                waitingStartTime = 0
-                updateFishingStatus()
-                task.wait(5)
-                continue
-            end
-            
-            -- Equip fishing rod if not equipped
-            if not character:FindFirstChild("FishingRod") and not FishingController.RodEquipped then
-                pcall(function()
-                    FishingController.ToggleFishingRod()
-                end)
-                task.wait(1)
-            end
-            
-            -- Start fishing process
-            if not FishingController.Casting and not FishingController.CastingStart and not FishingController.Reeling then
-                currentFishingState = "casting"
-                waitingStartTime = 0
-                updateFishingStatus()
-                
-                -- Start casting
-                simulateInput(Enum.UserInputType.MouseButton1, nil, true)
-                task.wait(0.1)
-                
-                -- Hold for a moment then release to cast
-                task.wait(math.random(1)) -- Random cast power
-                simulateInput(Enum.UserInputType.MouseButton1, nil, false)
-                
-                -- Wait exactly 1 second after cast
-                task.wait(1)
-                
-                currentFishingState = "waiting"
-                waitingStartTime = os.time()  -- Start timing the wait
-                updateFishingStatus()
-            end
-            
-            -- Check for reeling or timeout during waiting
-            if currentFishingState == "waiting" then
-                if FishingController.Reeling then
-                    currentFishingState = "reeling"
-                    waitingStartTime = 0  -- Reset waiting timer
-                    updateFishingStatus()
-                elseif waitingStartTime > 0 and (os.time() - waitingStartTime) >= 10 then
-                    -- Been waiting for 10+ seconds, force recast
-                    forceRecast()
-                    task.wait(2) -- Wait before continuing loop
-                    continue
-                end
-            end
-            
-            -- Update status if still waiting (to show timer)
-            if currentFishingState == "waiting" then
-                updateFishingStatus()
-            end
-            
-            task.wait(0.5)
-        end
-        
-        autoFishingActive = false
-        currentFishingState = "idle"
-        waitingStartTime = 0
-        updateFishingStatus()
-    end)
-end
-
--- Function to stop auto fishing
-local function stopAutoFishing()
-    autoFishingActive = false
-    currentFishingState = "stopped"
-    waitingStartTime = 0
-    
-    -- Clean up any reeling connections
-    pcall(function()
-        local FishingController = require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
-        if FishingController._reelingConnection then
-            FishingController._reelingConnection:Disconnect()
-            FishingController._reelingConnection = nil
-        end
-    end)
-    
-    -- Restore original functions
-    if originalUpdateReeling and originalUpdateFishPosition and originalFishingEnd then
-        pcall(function()
-            local FishingController = require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
-            FishingController.UpdateReeling = originalUpdateReeling
-            FishingController.UpdateFishPosition = originalUpdateFishPosition
-            FishingController.FishingEnd = originalFishingEnd
-        end)
-    end
-    
-    updateFishingStatus()
-end
-
--- Set up toggle callback
-AutoFishToggle:OnChanged(function()
-    if AutoFishToggle.Value then
-        -- Reset statistics
-        fishStats.totalCaught = 0
-        fishStats.startTime = os.time()
-        waitingStartTime = 0
-        
-        -- Hook fishing controller
-        if hookFishingController() then
-            currentFishingState = "starting"
-            updateFishingStatus()
-            
-            -- Start auto fishing after a short delay
-            spawn(function()
-                wait(2)
-                if AutoFishToggle.Value then
-                    autoFishingLoop()
-                end
-            end)
-        else
-            currentFishingState = "error"
-            updateFishingStatus()
-            AutoFishToggle:Set(false)
-        end
-    else
-        stopAutoFishing()
-    end
-end)
 
 -- Helper to recursively find a nested table by name
 local function findTableByName(tbl, targetName)
@@ -1267,21 +955,15 @@ end
 
 -- Format SpiritFruits: "FruitName: val1 val2 val3"
 local function formatSpiritFruits(tbl)
-    local output = "Fossils:\n"
+    local output = "Spirit Fruits:\n"
     for fruitName, subTable in pairs(tbl) do
         if typeof(subTable) == "table" then
             local valuesStr = ""
             for _, v in pairs(subTable) do
-                if typeof(v) == "number" then
-                    v = math.round(v) -- round number
-                end
                 valuesStr = valuesStr .. tostring(v) .. " "
             end
             output = output .. fruitName .. ": " .. valuesStr .. "\n"
         else
-            if typeof(subTable) == "number" then
-                subTable = math.round(subTable)
-            end
             output = output .. fruitName .. ": " .. tostring(subTable) .. "\n"
         end
     end
@@ -1290,21 +972,15 @@ end
 
 -- Format ElementalAlchemist: "Water: xp = 100, level = 2"
 local function formatElementalAlchemist(tbl)
-    local output = "\n Ancient Awakening :\n"
+    local output = "\nElemental Alchemist:\n"
     for element, data in pairs(tbl) do
         if typeof(data) == "table" then
             local line = {}
             for key, val in pairs(data) do
-                if typeof(val) == "number" then
-                    val = math.round(val) -- round number
-                end
                 table.insert(line, key .. " = " .. tostring(val))
             end
             output = output .. element .. ": " .. table.concat(line, ", ") .. "\n"
         else
-            if typeof(data) == "number" then
-                data = math.round(data)
-            end
             output = output .. element .. ": " .. tostring(data) .. "\n"
         end
     end
@@ -1312,7 +988,7 @@ local function formatElementalAlchemist(tbl)
 end
 
 -- Create combined section and paragraph
-local APSection = Tabs.Fossil:AddSection("Fossils + Ancient Awakening Data")
+local APSection = Tabs.Alchemist:AddSection("Spirit + Elemental Data")
 local CombinedParagraph = APSection:Paragraph("SpiritAndElemental", {
     Title = "Your Data",
     Content = "Loading..."
@@ -1328,8 +1004,8 @@ local function updateCombinedData()
         return
     end
 
-    local spiritFruits = findTableByName(replica, "SummerItems")
-    local elementalData = findTableByName(replica, "AncientAwakening")
+    local spiritFruits = findTableByName(replica, "SpiritFruits")
+    local elementalData = findTableByName(replica, "ElementalAlchemist")
 
     local output = ""
 
@@ -1362,29 +1038,28 @@ updateCombinedData()
 
 local RunService = game:GetService("RunService")
 
-local APSection = Tabs.Fossil:AddSection("Sacrifice Fossils")
+local APSection = Tabs.Alchemist:AddSection("Sacrifice Spirit Fruits")
 
 local ElementDropdown = APSection:CreateDropdown("ElementDropdown", {
-    Title = "Select Upgrade",
-    Description = "Select wanted upgrades.",
-    Values = {"SummerCoins", "SumerBicep", "SummerGrip", "SumerKnuckles"},
+    Title = "Select Element",
+    Description = "Select Spirit Fruit element",
+    Values = {"Fire", "Water", "Earth", "Wind"},
     Default = "--"
 })
 
 local SpiritFruitDropdown = APSection:CreateDropdown("SpiritFruitDropdown", {
-    Title = "Select Fossils(s)",
-    Description = "Select fossils to sacrifice",
+    Title = "Select Spirit Fruit(s)",
+    Description = "Select Spirit Fruits to sacrifice",
     Values = {
-        "Serpent Fossil",
-        "Skull of Oracle Fossil",
-        "Frozen Heartstone Fossil",
-        "Raptor Claw Fossil",
-        "Leviathan Tooth Fossil",
-        "Trilobit Shell Fossil",
-        "T-Rex Horn Fossil",
-        "Phoenix Fossil"
+        "Earth Spirit Fruit",
+        "Water Spirit Fruit",
+        "Fire Spirit Fruit",
+        "Animal Spirit Fruit",
+        "Ice Spirit Fruit",
+        "Skeleton Spirit Fruit",
+        "Evil Spirit Fruit",
+        "Godly Spirit Fruit"
     },
-
     Multi = true,
     Searchable = true,
     Default = {}
@@ -1392,14 +1067,14 @@ local SpiritFruitDropdown = APSection:CreateDropdown("SpiritFruitDropdown", {
 
 local selectamount = APSection:CreateDropdown("SelectAmount", {
     Title = "Select Amount",
-    Description = "Select the amount of the the selected fossils to sacrifice. If 1 is selected, it will sacrifice the fossil one at a time, but very quickly.",
+    Description = "Select the amount of the selected Spirit Fruit(s) to sacrifice. If 1 is selected, it will sacrifice the fruit one at a time, but very quickly.",
     Values = {"1", "All"},
     Default = "--"
 })
 
 local AutoSacrificeToggle = APSection:CreateToggle("AutoSacrificeToggle", {
     Title = "Auto Sacrifice",
-    Description = "Automatically sacrifice selected fossils."
+    Description = "Automatically sacrifice selected Spirit Fruits."
 })
 
 local sacrificeConnection = nil
@@ -1521,73 +1196,723 @@ if AutoSacrificeToggle.Value then
 end
 
 
-local section = Tabs.Quest:AddSection("Pirate Quest")
+local PrestigeParagraph = Tabs.Prestige:CreateParagraph("PrestigeData", {
+    Title = "Prestige Progress",
+    Content = "\n Loading..."
+})
 
-section:AddButton({
-    Title = "Complete the pirate quest",
-    Description = "Instantly complete the pirate quest.",
+local levelCosts = {
+    [0] = 250000,
+    [1] = 2500000,
+    [2] = 25000000,
+    [3] = 100000000,
+    [4] = 500000000,
+    [5] = 1000000000,
+    [6] = 25000000000,
+    [7] = 100000000000
+}
+
+local function findPrestigeTable(tbl)
+    for key, value in pairs(tbl) do
+        if key == "Prestige" and typeof(value) == "table" then
+            return value
+        elseif typeof(value) == "table" then
+            local found = findPrestigeTable(value)
+            if found then
+                return found
+            end
+        end
+    end
+    return nil
+end
+
+local function formatNumber(n)
+    local str = tostring(n)
+    local result = str
+    if n >= 1e9 then
+        result = string.format("%.1fB", n / 1e9)
+    elseif n >= 1e6 then
+        result = string.format("%.1fM", n / 1e6)
+    elseif n >= 1e3 then
+        result = string.format("%.1fK", n / 1e3)
+    end
+    return result
+end
+
+local function formatPrestige(prestigeTbl, stars)
+    local lines = {}
+
+    for _, sub in pairs(prestigeTbl) do
+        if typeof(sub) == "table" then
+            for stat, level in pairs(sub) do
+                local name = stat:gsub("^%l", string.upper)
+                local cost = levelCosts[level]
+                local costDisplay = cost and formatNumber(cost) or "Maxed"
+                local isUpgradeable = (cost and stars >= cost)
+                local upgradeStatus = (cost and isUpgradeable) and "✅" or "❌"
+
+                table.insert(lines, string.format("%s = Level %s [%s] Upgradeable: %s", name, tostring(level), costDisplay, upgradeStatus))
+            end
+        end
+    end
+
+    return table.concat(lines, "\n")
+end
+
+task.spawn(function()
+    while true do
+        local player = game:GetService("Players").LocalPlayer
+        local stars = player:GetAttribute("RiftStars") or 0
+        local replica = Knit.GetController("CustomReplicaController"):GetReplica()
+
+        if replica then
+            local prestige = findPrestigeTable(replica)
+            if prestige then
+                local header = string.format("Rift Stars: %s", formatNumber(stars))
+                local body = formatPrestige(prestige, stars)
+                PrestigeParagraph:SetValue(header .. "\n\n" .. body)
+            else
+                PrestigeParagraph:SetValue("Prestige table not found.")
+            end
+        else
+            PrestigeParagraph:SetValue("Replica not found.")
+        end
+        task.wait(1)
+    end
+end)
+
+-- Dropdown to choose which prestige upgrades to apply
+local PrestigeUpgrades = Tabs.Prestige:AddDropdown("PrestigeUpgradesDropdown", {
+    Title = "Select Upgrade",
+    Description = "Choose a prestige upgrade to apply",
+    Values = {"Fruit", "Luck", "Training"},
+    Multi = true,
+    Default = {}
+})
+
+-- Toggle for auto-prestige
+local AutoPrestigeToggle = Tabs.Prestige:AddToggle("AutoPrestigeToggle", {
+    Title = "Auto Prestige",
+    Description = "Automatically purchase prestige upgrades when affordable.",
+    Default = false
+})
+
+local upgradeMap = {
+    Fruit = 3,
+    Training = 2,
+    Luck = 1
+}
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+
+        if not AutoPrestigeToggle.Value then continue end
+
+        local player = game:GetService("Players").LocalPlayer
+        local stars = player:GetAttribute("RiftStars") or 0
+        local selectedUpgrades = PrestigeUpgrades.Value
+        local replica = Knit.GetController("CustomReplicaController"):GetReplica()
+        if not replica then continue end
+
+        local prestige = findTableByName(replica, "Prestige")
+        if not prestige then continue end
+
+        for upgradeName, selected in pairs(selectedUpgrades) do
+            if selected then
+                local upgradeId = upgradeMap[upgradeName]
+                if upgradeId then
+                    for _, subtbl in pairs(prestige) do
+                        if typeof(subtbl) == "table" and subtbl[upgradeName] ~= nil then
+                            local level = subtbl[upgradeName]
+                            local cost = levelCosts[level]
+                            if cost and stars >= cost then
+                                local success, err = pcall(function()
+                                    game:GetService("ReplicatedStorage").Packages.Knit.Services.PrestigeService.RF.Prestige:InvokeServer("Prestige1", upgradeId)
+                                end)
+                                if not success then
+                                    warn("Failed to auto prestige", upgradeName, err)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+
+
+-- Merchant Section
+local MerchantSection = Tabs.Garden:AddSection("Farmer Merchant")
+
+local MerchantDropdown = MerchantSection:AddDropdown("MerchantItems", {
+    Title = "Select Items",
+    Description = "Choose items to auto-buy",
+    Values = {"Banana Seeds", "Pear Seeds", "Raspberrys"},
+    Multi = true,
+    Default = {}
+})
+
+MerchantDropdown:OnChanged(function(Value)
+    selectedMerchantItems = Value
+end)
+
+local MerchantToggle = MerchantSection:AddToggle("AutoBuy", {
+    Title = "Auto Buy Merchant",
+    Description = "Automatically buy selected items",
+    Default = false
+})
+
+MerchantToggle:OnChanged(function(Value)
+    autoBuyEnabled = Value
+    if Value then
+        spawn(function()
+            while autoBuyEnabled do
+                for itemName, isSelected in pairs(selectedMerchantItems) do
+                    if not autoBuyEnabled then break end
+                    if isSelected and MERCHANT_ITEMS[itemName] then
+                        local itemConfig = MERCHANT_ITEMS[itemName]
+                        for i = 1, itemConfig.amount do
+                            if not autoBuyEnabled then break end
+                            local args = {
+                                [1] = "Farmer",
+                                [2] = itemConfig.id
+                            }
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.MerchantService.RF.BuyItem:InvokeServer(unpack(args))
+                            task.wait(0.1)
+                        end
+                    end
+                end
+                if autoBuyEnabled then
+                    task.wait(60)
+                end
+            end
+        end)
+    end
+end)
+
+-- Upgrade Section
+local UpgradeSection = Tabs.Garden:AddSection("Upgrade Items")
+
+local UpgradeDropdown = UpgradeSection:AddDropdown("UpgradeItems", {
+    Title = "Select Items",
+    Description = "Choose items to auto-upgrade",
+    Values = {"Cookie", "Rotten Banana", "Tasty Cookie", "Pink Donut", "Rotten Starfruit", 
+              "Raspberry", "Rotten Dragon Fruit", "Vanilla Donut", "Golden Pear", 
+              "Normal Starfruit", "Fine Dragon Fruit"},
+    Multi = true,
+    Default = {}
+})
+
+UpgradeDropdown:OnChanged(function(Value)
+    selectedUpgradeItems = Value
+end)
+
+local UpgradeToggle = UpgradeSection:AddToggle("AutoUpgrade", {
+    Title = "Upgrade Snacks (Selected)",
+    Description = "Automatically upgrade selected snacks",
+    Default = false
+})
+
+UpgradeToggle:OnChanged(function(Value)
+    autoUpgradeEnabled = Value
+    if Value then
+        spawn(function()
+            while autoUpgradeEnabled do
+                for itemName, isSelected in pairs(selectedUpgradeItems) do
+                    if not autoUpgradeEnabled then break end
+                    if isSelected and UPGRADE_ITEMS[itemName] then
+                        local itemConfig = UPGRADE_ITEMS[itemName]
+                        local args = {
+                            [1] = {
+                                ["Item"] = itemConfig.name,
+                                ["Tier"] = itemConfig.tier
+                            }
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ItemCraftingService.RF.UpgradeSnack:InvokeServer(unpack(args))
+                    end
+                end
+                task.wait(0.05)
+            end
+        end)
+    end
+end)
+
+local UpgradeAllToggle = UpgradeSection:AddToggle("AutoUpgradeAll", {
+    Title = "Upgrade All Snacks",
+    Description = "Automatically upgrade all available snacks",
+    Default = false
+})
+
+UpgradeAllToggle:OnChanged(function(Value)
+    autoUpgradeAllEnabled = Value
+    if Value then
+        spawn(function()
+            while autoUpgradeAllEnabled do
+                for _, itemConfig in pairs(UPGRADE_ITEMS) do
+                    if not autoUpgradeAllEnabled then break end
+                    local args = {
+                        [1] = {
+                            ["Item"] = itemConfig.name,
+                            ["Tier"] = itemConfig.tier
+                        }
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ItemCraftingService.RF.UpgradeSnack:InvokeServer(unpack(args))
+                end
+                task.wait(0.05)
+            end
+        end)
+    end
+end)
+
+
+
+
+-- Create Trial Section
+local TrialSection = Tabs.Main:AddSection("Auto Trial")
+
+-- Medieval Toggle
+local MedievalToggle = TrialSection:AddToggle("MedievalTrial", {
+    Title = "Auto Medieval",
+    Description = "Don't fight NPC's OR Bosses while this toggle is on. This will cause it to break.",
+    Default = false
+})
+
+MedievalToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while MedievalToggle.Value do
+                local args = {
+                    [1] = "Medieval"
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
+                
+                -- Wait for duration unless toggle turned off
+                local timeWaited = 0
+                while timeWaited < 1201 and MedievalToggle.Value do
+                    wait(1)
+                    timeWaited = timeWaited + 1
+                end
+                
+                if not MedievalToggle.Value then break end
+            end
+        end)
+    end
+end)
+
+-- Angelic Toggle
+local AngelicToggle = TrialSection:AddToggle("AngelicTrial", {
+    Title = "Auto Angelic",
+    Description = "Don't fight NPC's OR Bosses while this toggle is on. This will cause it to break.",
+    Default = false
+})
+
+AngelicToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while AngelicToggle.Value do
+                local args = {
+                    [1] = "Angelic"
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
+                
+                -- Wait for duration unless toggle turned off
+                local timeWaited = 0
+                while timeWaited < 600 and AngelicToggle.Value do
+                    wait(1)
+                    timeWaited = timeWaited + 1
+                end
+                
+                if not AngelicToggle.Value then break end
+            end
+        end)
+    end
+end)
+
+
+
+local OpenSection = Tabs.Main:AddSection("Auto Open")
+
+-- Kingdom Chest Toggle
+local KingdomChestToggle = OpenSection:AddToggle("KingdomChest", {
+    Title = "Auto Open Kingdom Chest",
+    Default = false
+})
+
+KingdomChestToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while KingdomChestToggle.Value do
+                if not KingdomChestToggle.Value then break end
+                
+                local args = {
+                    [1] = "KingdomChest"
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
+                wait(0.5)
+            end
+        end)
+    end
+end)
+
+-- Orc Vault Toggle
+local OrcVaultToggle = OpenSection:AddToggle("OrcVault", {
+    Title = "Auto Open Orc Vault",
+    Default = false
+})
+
+OrcVaultToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while OrcVaultToggle.Value do
+                if not OrcVaultToggle.Value then break end
+                
+                local args = {
+                    [1] = "OrcVault"
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
+                wait(0.5)
+            end
+        end)
+    end
+end)
+
+
+-- Orc Vault Toggle
+local MatrixChestToggle = OpenSection:AddToggle("MatrixChest", {
+    Title = "Auto Open Matrix Chest",
+    Default = false
+})
+
+MatrixChestToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while MatrixChestToggle.Value do
+                if not MatrixChestToggle.Value then break end
+                local args = {
+                    [1] = "Matrix"
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ItemCrateService.RF.Spin:InvokeServer("Matrix")
+                wait(0.5)
+            end
+        end)
+    end
+end)
+
+
+local TowerSection = Tabs.Main:AddSection("Towers")
+
+-- Prison Cave Buttons
+TowerSection:AddButton({
+    Title = "Use Beach Tower Key (1x)",
+    Description = "Use the Beach Tower Key once.",
     Callback = function()
-        local Players = game:GetService("Players")
-        local LocalPlayer = Players.LocalPlayer
-        local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local args = {
+            [1] = "BeachTower",
+            [2] = false
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
 
-        -- Utility: get the root Quest object
-        local function getQuestRoot()
-            return workspace:FindFirstChild("Zones")
-                and workspace.Zones:FindFirstChild("SummerIsland")
-                and workspace.Zones.SummerIsland:FindFirstChild("Interactables")
-                and workspace.Zones.SummerIsland.Interactables:FindFirstChild("Quest")
-        end
+TowerSection:AddButton({
+    Title = "Use All Beach Tower Keys (250x)",
+    Description = "Use All Beach Tower Keys (max 250 at a time).",
+    Callback = function()
+        local args = {
+            [1] = "BeachTower",
+            [2] = true
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
 
-        -- Utility: teleport player in front of a part
-        local function teleportTo(part)
-            if part and Character then
-                Character:PivotTo(part:GetPivot() * CFrame.new(0, 0, -5))
-            end
-        end
+-- Prison Cave Buttons
+TowerSection:AddButton({
+    Title = "Use Beach Tower Key (1x)",
+    Description = "Use the RIft Cave Key once.",
+    Callback = function()
+        local args = {
+            [1] = "RiftCave",
+            [2] = false
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
 
-        -- Utility: safely fire a prompt
-        local function tryFirePrompt(target)
-            if target then
-                local prompt = target:FindFirstChildWhichIsA("ProximityPrompt", true)
-                if prompt then
-                    teleportTo(target)
-                    task.wait(0.25)
-                    fireproximityprompt(prompt, Character:FindFirstChild("Humanoid"))
-                    return true
+TowerSection:AddButton({
+    Title = "Use All Beach Tower Keys (250x)",
+    Description = "Use All Rift Cave Keys (max 250 at a time).",
+    Callback = function()
+        local args = {
+            [1] = "RiftCave",
+            [2] = true
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+local WheelSection = Tabs.Main:AddSection("Auto Wheel")
+
+-- Wheels dropdown
+local WheelDropdown = WheelSection:AddDropdown("WheelSelect", {
+    Title = "Select Wheel",
+    Values = {"Cave Fortune", "Divine Fortune", "Sakura Fortune"},
+    Multi = true,
+    Default = {}
+})
+
+-- Spin amount dropdown with mapping
+local spinAmounts = {
+    ["1x"] = "",    -- No second argument for 1x
+    ["3x"] = "x10", -- x10 for 3x spins
+    ["10x"] = "x25" -- x25 for 10x spins
+}
+
+local SpinAmountDropdown = WheelSection:AddDropdown("SpinAmount", {
+    Title = "Select Spin Amount",
+    Values = {"1x", "3x", "10x"},
+    Multi = false,
+    Default = "1x"
+})
+
+-- Auto spin toggle
+local AutoSpinToggle = WheelSection:AddToggle("AutoSpin", {
+    Title = "Auto Spin",
+    Default = false
+})
+
+AutoSpinToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while AutoSpinToggle.Value do
+                if not AutoSpinToggle.Value then break end
+                
+                for wheel, isSelected in pairs(WheelDropdown.Value) do
+                    if not AutoSpinToggle.Value then break end
+                    if isSelected then
+                        local args = {
+                            [1] = wheel
+                        }
+                        
+                        -- Add second argument only if not 1x
+                        local spinAmount = spinAmounts[SpinAmountDropdown.Value]
+                        if spinAmount ~= "" then
+                            args[2] = spinAmount
+                        end
+                        
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
+                        wait(0.5)
+                    end
                 end
+                
+                wait(0.5)
             end
-            return false
-        end
+        end)
+    end
+end)
 
-        -- Step 1: Talk to the LostPirate NPC (start quest)
-        local questRoot = getQuestRoot()
-        local lostPirate = questRoot and questRoot:FindFirstChild("LostPirate")
-        if tryFirePrompt(lostPirate) then
-            print("Started Pirate Quest")
-        end
+-- Create Auto Roll Trainers section
+local TrainersSection = Tabs.Main:AddSection("Auto Roll Trainers")
 
-        -- Step 2: Collect 10 GoldenPlanks
-        for i = 1, 10 do
-            local plank = questRoot
-                and questRoot:FindFirstChild("LostPirateItems")
-                and questRoot.LostPirateItems:FindFirstChild("GoldenPlank" .. i)
-            if plank and plank:FindFirstChild("Hitbox") then
-                if tryFirePrompt(plank.Hitbox) then
-                    print("Collected GoldenPlank" .. i)
+-- Add toggle to automatically open all trainer crates
+local AutoRollTrainersToggle = TrainersSection:AddToggle("AutoRollTrainers", {
+    Title = "Auto Roll All Crates",
+    Description = "Automatically begings to opens all trainer crates",
+    Default = false
+})
+
+-- Variable to store the loop
+local trainerCrateLoop = nil
+
+AutoRollTrainersToggle:OnChanged(function(value)
+    if value then
+        -- Start auto opening crates
+        trainerCrateLoop = spawn(function()
+            local crates = {
+                "Mythic Crate",
+                "Gold Crate",
+                "Starter Crate",
+                "Premium Crate",
+                "Prism Crate",
+                "Galaxy Crate"
+            }
+
+            while AutoRollTrainersToggle.Value do
+                for _, crate in ipairs(crates) do
+                    local args = {
+                        [1] = crate
+                    }
+                    pcall(function()
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.TrainerService.RF.OpenCrate:InvokeServer(unpack(args))
+                    end)
                 end
+                
+                -- Wait 1 second before next cycle
+                task.wait(3)
             end
-            task.wait(0.3)
+        end)
+    else
+        -- Stop the loop
+        if trainerCrateLoop then
+            trainerCrateLoop:Cancel()
+            trainerCrateLoop = nil
         end
+    end
+end)
 
-        -- Step 3: Return to LostPirate to complete
-        if tryFirePrompt(lostPirate) then
-            print("Completed Pirate Quest")
+
+-- After Tabs declaration
+local CircusSection = Tabs.Main:AddSection("Event Egg")
+
+-- Add Auto Circus Egg toggle
+local AutoCircusEggToggle = CircusSection:AddToggle("AutoCircusEgg", {
+    Title = "Auto Claim the Event Egg",
+    Description = "Automatically claims the Event Egg",
+    Default = false
+})
+
+local autoCircusThread
+
+AutoCircusEggToggle:OnChanged(function()
+    if AutoCircusEggToggle.Value then
+        -- Start auto-claiming in a new thread
+        autoCircusThread = task.spawn(function()
+            while AutoCircusEggToggle.Value do
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.EventEggService.RF.Claim:InvokeServer()
+
+                task.wait(30) -- Wait 300 seconds (5 minutes) before claiming again
+            end
+        end)
+    else
+        -- Stop the thread properly
+        if autoCircusThread then
+            task.cancel(autoCircusThread)
+        end
+    end
+end)
+
+
+local PetSection = Tabs.Main:AddSection("Pet Stuff")
+
+
+-- Equip Best Toggle
+local EquipBestToggle = PetSection:AddToggle("EquipBest", {
+    Title = "Equip Best",
+    Default = false
+})
+
+EquipBestToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while EquipBestToggle.Value do
+                -- Unequip all
+                local unequipArgs = {
+                    [1] = game:GetService("Players").LocalPlayer
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.PetService.RF.unequipAll:InvokeServer(unpack(unequipArgs))
+                
+                -- Equip best
+                local equipArgs = {
+                    [1] = game:GetService("Players").LocalPlayer
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.PetService.RF.equipBest:InvokeServer(unpack(equipArgs))
+                
+                -- Wait loop with break check
+                local timeWaited = 0
+                while timeWaited < 15 and EquipBestToggle.Value do
+                    wait(1)
+                    timeWaited = timeWaited + 1
+                end
+                
+                if not EquipBestToggle.Value then break end
+            end
+        end)
+    end
+end)
+
+
+local AutoClickToggle = PetSection:AddToggle("AutoClick", {
+    Title = "Craft All (Unlocked)",
+    Default = false
+})
+
+AutoClickToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while AutoClickToggle.Value do
+                local player = game:GetService("Players").LocalPlayer
+
+                -- Fire CraftAll button
+                local craftAllButton = player.PlayerGui.GameUI.Menus.Inventory.ExtraTools.Pets.BottomBar.CraftAll
+                if craftAllButton then
+                    firesignal(craftAllButton.MouseButton1Click)
+                end
+
+                -- Wait 1 second
+                wait(1)
+
+                -- Fire Confirmation Yes button using Activated event
+                local confirmButton = player.PlayerGui.GameUI.Menus.ConfirmationMenu.Btns.Yes.Button
+                if confirmButton then
+                    firesignal(confirmButton.Activated)
+                end
+
+                -- Wait loop with break check
+                local timeWaited = 0
+                while timeWaited < 3 and AutoClickToggle.Value do
+                    wait(1)
+                    timeWaited += 1
+                end
+
+                if not AutoClickToggle.Value then break end
+            end
+        end)
+    end
+end)
+
+
+
+local AuraSection = Tabs.Main:AddSection("Auto Aura")
+
+-- Variable to control the auto roll aura loop
+local autoRollAura = false
+
+-- Function to start Auto Roll Aura
+local function startAutoRollAura()
+    spawn(function()
+        while autoRollAura do
+            -- Invoke the server function
+            game:GetService("ReplicatedStorage").Packages.Knit.Services.AuraService.RF.Roll:InvokeServer()
+            -- Wait for 0.0001 seconds before the next iteration
+            task.wait(0.25)
+        end
+    end)
+end
+
+-- Function to stop Auto Roll Aura
+local function stopAutoRollAura()
+    autoRollAura = false
+end
+
+-- Add the Auto Roll Aura toggle to the Misc tab
+local AuraToggle = AuraSection:AddToggle("Auto Roll Aura", {
+    Title = "Auto Roll Aura",
+    Default = false,
+    Callback = function(enabled)
+        autoRollAura = enabled
+        if enabled then
+            startAutoRollAura()
+        else
+            stopAutoRollAura()
         end
     end
 })
 
 
+-- InterfaceManager (Allows you to have a interface managment system)
 
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
