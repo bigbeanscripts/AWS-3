@@ -3,6 +3,7 @@ local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.
 local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/InterfaceManager.luau"))()
 
 
+
 local Window = Library:Window{
     Title = "Arm Wrestling Simulator",
     SubTitle = "By Duckie",
@@ -58,6 +59,7 @@ local Tabs = {
     AutoFight = Window:AddTab({ Title = "Auto Train/Fight", Icon = "crown" }),
     Eggs = Window:AddTab({ Title = "Eggs", Icon = "egg" }),
     Machines = Window:AddTab({ Title = "Machines", Icon = "star" }),
+    Rebirth = Window:AddTab({ Title = "Rebirth/SR", Icon = "phosphor-recycle-fill" }),
     Teleport = Window:AddTab({ Title = "Teleport", Icon = "rocket" }),
     Alchemist = Window:AddTab({ Title = "Alchemist", Icon = "flask-conical"}),
     Prestige = Window:AddTab({ Title = "Prestige", Icon = "phosphor-trophy-bold" }),
@@ -703,6 +705,24 @@ ScriptsSection:AddButton({
     end
 })
 
+local RebirthSection = Tabs.Rebirth:AddSection("Rebirths and Super Rebirths")
+
+-- Add loadstring button
+RebirthSection:AddButton({
+    Title = "Load SR/Rebirth Script",
+    Description = "Load my OP Rebirth and Super Rebirth script (can cause lag)",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/SR/refs/heads/main/SuperRebirth"))()
+    end
+})
+
+RebirthSection:AddButton({
+    Title = "Load Less Laggy SR/Rebirth Script)",
+    Description = "This is a little bit slower, but offers much better peformance (RECOMMENDED)",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/SRlesslag/refs/heads/main/aws"))()
+    end
+})
 
 
 local Teleport = Tabs.Teleport
@@ -1912,7 +1932,14 @@ local AuraToggle = AuraSection:AddToggle("Auto Roll Aura", {
 })
 
 
--- InterfaceManager (Allows you to have a interface managment system)
+Tabs.Settings:AddButton({
+    Title = "Anti Afk",
+    Description = "Never get kicked for being inactive.",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/SenhorLDS/ProjectLDSHUB/refs/heads/main/Anti%20AFK"))()
+    end
+})
+
 
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
