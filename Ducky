@@ -82,6 +82,15 @@ EventSection:AddButton({
     end
 })
 
+EventSection:AddButton({
+    Title = "Load Less Laggy Event Script",
+    Description = "Loads a less laggy version of the Event script",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/EventLessLag/refs/heads/main/AWS"))()
+    end
+})
+
+
 
 
 -- Auto Train
