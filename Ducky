@@ -384,6 +384,7 @@ AutoTrainPullUpsToggle:OnChanged(function()
     end
 end)
 
+
 -- UI section
 local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 
@@ -391,7 +392,13 @@ local modelNames = {}
 local npcLocations = {} -- Store model locations for reference
 local armWrestlingFolder = workspace.GameObjects.ArmWrestling
 
--- Populate model names for dropdown
+-- Services
+local localPlayer = game.Players.LocalPlayer
+local KnitServices = game:GetService("ReplicatedStorage").Packages.Knit.Services
+local ArmwrestleServiceRF = KnitServices.ArmWrestleService.RF
+local ZoneService = KnitServices.ZoneService.RE
+
+-- Populate model names for dropdown and store NPC locations
 local function findModels(folder)
     for _, item in pairs(folder:GetChildren()) do
         if item:IsA("Folder") and item.Name ~= "PVP" and item.Name ~= "6_OLD" then
@@ -411,6 +418,49 @@ end
 -- Sort dropdown options alphabetically
 local function sortModels()
     table.sort(modelNames)
+end
+
+-- Variables
+local autoClickThreads = {}
+local autoFightThreads = {}
+local cleanupConnections = {}
+local teleportAttempts = 0
+
+-- Function to teleport to the correct zone for an NPC
+local function teleportToNpcZone(npcName)
+    local playerCurrentZone = localPlayer:GetAttribute("CurrentZone")
+    
+    -- Find which zone the NPC is in
+    local npcZone = nil
+    if npcLocations[npcName] then
+        npcZone = npcLocations[npcName].folder
+    end
+    
+    -- If NPC zone found and different from current zone, teleport (max 2 attempts)
+    if npcZone and tostring(playerCurrentZone) ~= tostring(npcZone) and teleportAttempts < 2 then
+        -- Get the teleport destination
+        local teleportDest = workspace.Zones[npcZone].Interactables.Teleports.Locations.Spawn
+        
+        if teleportDest then
+            teleportAttempts = teleportAttempts + 1
+            task.wait(1)
+            
+            -- Teleport to the appropriate zone
+            local args = {
+                [1] = teleportDest
+            }
+            
+            pcall(function()
+                ZoneService.teleport:FireServer(unpack(args))
+            end)
+            
+            -- Wait for teleport to complete
+            task.wait(2.5)
+            
+            return true
+        end
+    end
+    return false
 end
 
 findModels(armWrestlingFolder)
@@ -439,13 +489,11 @@ local AutoFightToggle = Tabs.AutoFight:AddToggle("AutoFight", {
     Default = false
 })
 
-
 local AlwaysWin = Tabs.AutoFight:AddButton({
     Title = "Always Win",
     Description = "This button will make it so NPCs can't fight back. To remove this, you will need to rejoin.",
     Callback = function()
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local ArmWrestleController = require(ReplicatedStorage.Controllers.Fighting.ArmWrestleController)
+        local ArmWrestleController = require(game:GetService("ReplicatedStorage").Controllers.Fighting.ArmWrestleController)
 
         -- Store the original IncrementPower function
         local originalIncrementPower = ArmWrestleController.IncrementPower
@@ -475,25 +523,22 @@ local AlwaysWin = Tabs.AutoFight:AddButton({
     end
 })
 
--- Services
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local KnitServices = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services")
-local ArmwrestleServiceRF = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF")
-
--- Variables
-local autoClickThreads = {}
-local autoFightLoop = nil
-local lastFightEnded = true
-
--- Get NPC reference from name
-local function getNPCReference(name)
-    local ref = npcLocations[name]
-    return ref and ref.npc
+-- Cleanup function to clear pending requests
+local function cleanupRequests()
+    local memoryBefore = gcinfo()
+    collectgarbage("count")
+    local memoryAfter = gcinfo()
+    
+    pcall(function()
+        local temp = ArmwrestleServiceRF
+        task.wait(0.01)
+    end)
 end
 
 -- Auto Click toggle handler
 AutoClickToggle:OnChanged(function()
     if AutoClickToggle.Value then
+        -- Stop existing threads and cleanup
         for _, thread in pairs(autoClickThreads) do
             if typeof(thread) == "thread" then
                 task.cancel(thread)
@@ -502,12 +547,18 @@ AutoClickToggle:OnChanged(function()
             end
         end
         autoClickThreads = {}
-
+        
+        -- Stop any existing cleanup connections
+        if cleanupConnections.autoClick then
+            cleanupConnections.autoClick:Disconnect()
+        end
+        
+        -- Spawn new click threads
         task.spawn(function()
-            for i = 1, 150 do
+            for i = 1, 500 do
                 local threadData = { active = true }
                 table.insert(autoClickThreads, threadData)
-
+                
                 task.spawn(function()
                     while threadData.active and AutoClickToggle.Value do
                         pcall(function()
@@ -517,11 +568,22 @@ AutoClickToggle:OnChanged(function()
                         task.wait()
                     end
                 end)
-
-                task.wait()
+                
+                task.wait(0.001)
+            end
+        end)
+        
+        -- Start cleanup timer for auto click
+        cleanupConnections.autoClick = task.spawn(function()
+            while AutoClickToggle.Value do
+                task.wait(5)
+                if AutoClickToggle.Value then
+                    cleanupRequests()
+                end
             end
         end)
     else
+        -- Disable all click threads
         for _, thread in pairs(autoClickThreads) do
             if typeof(thread) == "thread" then
                 task.cancel(thread)
@@ -530,37 +592,105 @@ AutoClickToggle:OnChanged(function()
             end
         end
         autoClickThreads = {}
+        
+        -- Stop cleanup timer
+        if cleanupConnections.autoClick then
+            task.cancel(cleanupConnections.autoClick)
+            cleanupConnections.autoClick = nil
+        end
+        
+        -- Final cleanup
+        cleanupRequests()
     end
 end)
 
--- Auto Fight toggle handler 
+-- Auto Fight toggle handler
 AutoFightToggle:OnChanged(function()
     if AutoFightToggle.Value then
-        if autoFightLoop then task.cancel(autoFightLoop) end
-        autoFightLoop = task.spawn(function()
-            while AutoFightToggle.Value do
-                local selectedName = modelDropdown.Value
-                if selectedName then
-                    local npcModel = getNPCReference(selectedName)
-                    if npcModel then
+        -- Reset teleport attempts when auto fight is enabled
+        teleportAttempts = 0
+        
+        -- Stop previous threads and cleanup
+        for _, flag in pairs(autoFightThreads) do
+            flag.active = false
+        end
+        autoFightThreads = {}
+        
+        -- Stop any existing cleanup connections
+        if cleanupConnections.autoFight then
+            cleanupConnections.autoFight:Disconnect()
+        end
+        
+        -- Spawn threads for repeated boss fights
+        for i = 1, 500 do
+            local threadFlag = { active = true }
+            table.insert(autoFightThreads, threadFlag)
+            
+            task.spawn(function()
+                while threadFlag.active and AutoFightToggle.Value do
+                    local selectedName = modelDropdown.Value
+                    if selectedName then
+                        -- Try to teleport (max 2 attempts)
+                        teleportToNpcZone(selectedName)
+                        
+                        local args = {
+                            [1] = selectedName
+                        }
+                        
                         pcall(function()
-                            ArmwrestleServiceRF:WaitForChild("RequestStartFight"):InvokeServer(npcModel)
+                            ArmwrestleServiceRF:WaitForChild("RequestStartFight"):InvokeServer(unpack(args))
                         end)
                     end
+                    task.wait(0.01)
                 end
-                task.wait(0.1) -- 0.1 second interval
+            end)
+            
+            task.wait(0.001)
+        end
+        
+        -- Start cleanup timer for auto fight
+        cleanupConnections.autoFight = task.spawn(function()
+            while AutoFightToggle.Value do
+                task.wait(5)
+                if AutoFightToggle.Value then
+                    cleanupRequests()
+                end
             end
         end)
     else
-        if autoFightLoop then
-            task.cancel(autoFightLoop)
-            autoFightLoop = nil
+        -- Stop all fight threads
+        for _, flag in pairs(autoFightThreads) do
+            flag.active = false
         end
+        autoFightThreads = {}
+        
+        -- Stop cleanup timer
+        if cleanupConnections.autoFight then
+            task.cancel(cleanupConnections.autoFight)
+            cleanupConnections.autoFight = nil
+        end
+        
+        -- Final cleanup
+        cleanupRequests()
+        
+        -- Reset teleport attempts when auto fight is disabled
+        teleportAttempts = 0
     end
 end)
 
-
-
+local function aggressiveCleanup()
+    local memoryBefore = gcinfo()
+    
+    pcall(function()
+        local oldService = ArmwrestleServiceRF
+        ArmwrestleServiceRF = KnitServices.ArmWrestleService.RF
+    end)
+    
+    collectgarbage("count")
+    task.wait(0.1)
+    
+    local memoryAfter = gcinfo()  
+end
 
 
 -- Default values
