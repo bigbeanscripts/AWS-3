@@ -2132,11 +2132,15 @@ local function updateUserCountStatus()
             return
         end
     end
-
 end
 
+task.spawn(function()
+	while true do
+		updateUserCountStatus()
+		task.wait(10)
+	end
+end)
 
-updateUserCountStatus()
 
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
