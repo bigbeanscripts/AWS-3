@@ -2097,7 +2097,7 @@ if not requestFunc then
     return
 end
 
--- UI
+
 local usercountsection = Tabs.Settings:AddSection("User Count")
 
 local userCountParagraph = Tabs.Settings:AddParagraph("UserCountStatus", {
